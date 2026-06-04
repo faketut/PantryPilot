@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PantryPilot</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green-50: #f0fdf4;
+      --green-100: #dcfce7;
+      --green-200: #bbf7d0;
+      --green-300: #86efac;
+      --green-400: #4ade80;
+      --green-500: #22c55e;
+      --green-600: #16a34a;
+      --green-700: #15803d;
+      --green-800: #166534;
+      --green-900: #14532d;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+      --red-500: #ef4444;
+      --orange-500: #f97316;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-800);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .navbar {
+      background: white;
+      border-bottom: 1px solid var(--gray-100);
+      padding: 0 1.5rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .navbar-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--green-700);
+    }
+    .brand-icon {
+      width: 32px; height: 32px;
+      background: var(--green-500);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 1rem;
+    }
+    .impact-pill {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: var(--green-50);
+      border: 1px solid var(--green-200);
+      border-radius: 999px;
+      padding: 0.4rem 1rem;
+      font-size: 0.8rem; font-weight: 600;
+      color: var(--green-700);
+    }
+    .impact-dot {
+      width: 8px; height: 8px;
+      background: var(--green-400);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .tabs {
+      background: white;
+      border-bottom: 1px solid var(--gray-100);
+      padding: 0 1.5rem;
+    }
+    .tabs-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+    }
+    .tab {
+      padding: 0.85rem 1.5rem;
+      font-size: 0.85rem; font-weight: 500;
+      color: var(--gray-400);
+      cursor: pointer;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: var(--gray-600); }
+    .tab.active {
+      color: var(--green-700);
+      border-bottom-color: var(--green-500);
+      font-weight: 600;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .card {
+      background: white;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .card-title { font-size: 1rem; font-weight: 600; color: var(--gray-800); }
+    .card-subtitle { font-size: 0.8rem; color: var(--gray-400); margin-top: 0.15rem; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .upload-zone {
+      border: 2px dashed var(--green-200);
+      border-radius: var(--radius-sm);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--green-50);
+    }
+    .upload-zone:hover { border-color: var(--green-400); background: var(--green-100); }
+    .upload-icon {
+      width: 56px; height: 56px;
+      background: var(--green-100);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 0.75rem;
+      font-size: 1.5rem;
+    }
+    .upload-text { font-size: 0.88rem; color: var(--gray-500); margin-bottom: 0.75rem; }
+    input[type=file] { display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-family: inherit; font-size: 0.85rem; font-weight: 500;
+      border-radius: var(--radius-sm);
+      padding: 0.6rem 1.25rem;
+      cursor: pointer; transition: all 0.15s; border: none;
+    }
+    .btn-primary { background: var(--green-600); color: white; }
+    .btn-primary:hover { background: var(--green-700); }
+    .btn-primary:disabled { background: var(--gray-200); color: var(--gray-400); cursor: not-allowed; }
+    .btn-secondary { background: var(--green-50); color: var(--green-700); border: 1px solid var(--green-200); }
+    .btn-secondary:hover { background: var(--green-100); }
+    .btn-ghost { background: transparent; color: var(--gray-500); padding: 0.4rem 0.75rem; }
+    .btn-ghost:hover { background: var(--gray-100); color: var(--gray-700); }
+
+    .pantry-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; table-layout: fixed; }
+    .pantry-table-wrap { overflow-x: auto; }
+    .pantry-table col.col-item    { width: 30%; }
+    .pantry-table col.col-qty     { width: 8%; }
+    .pantry-table col.col-cat     { width: 20%; }
+    .pantry-table col.col-exp     { width: 24%; }
+    .pantry-table col.col-actions { width: 18%; }
+    .pantry-table thead th {
+      text-align: left; padding: 0.5rem 0.5rem;
+      font-size: 0.75rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--gray-400);
+      border-bottom: 1px solid var(--gray-100);
+    }
+    .pantry-table tbody td {
+      padding: 0.6rem 0.5rem;
+      border-bottom: 1px solid var(--gray-50);
+      vertical-align: middle;
+    }
+    .pantry-table tbody tr:hover { background: var(--gray-50); }
+    .pantry-table tbody tr:last-child td { border-bottom: none; }
+    .expiry-urgent { color: var(--red-500); font-weight: 600; white-space: nowrap; }
+    .expiry-soon   { color: var(--orange-500); font-weight: 500; white-space: nowrap; }
+    .expiry-ok     { color: var(--green-600); white-space: nowrap; }
+    .source-tag {
+      font-size: 0.7rem;
+      background: var(--gray-100); color: var(--gray-500);
+      padding: 0.15rem 0.5rem; border-radius: 4px;
+    }
+    .col-unit, .col-source { display: none; }
+    @media (min-width: 700px) { .col-unit, .col-source { display: table-cell; } }
+    .row-actions { white-space: nowrap; width: 56px; text-align: right; }
+
+    .source-badge {
+      font-size: 0.63rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      padding: 0.1rem 0.4rem; border-radius: 4px; width: fit-content;
+    }
+    .source-badge-mcp { background: var(--green-100); color: var(--green-700); }
+
+    /* URL import card */
+    .url-import-row {
+      display: flex; align-items: center; gap: 0.6rem;
+      border: 1.5px solid var(--gray-200); border-radius: 0.65rem;
+      padding: 0.55rem 0.8rem; background: var(--gray-50);
+      transition: border-color 0.15s;
+    }
+    .url-import-row:focus-within { border-color: var(--green-400); background: white; }
+    .url-import-icon { color: var(--gray-400); flex-shrink: 0; display:flex; }
+    .url-import-input {
+      flex: 1; border: none; background: transparent; outline: none;
+      font-size: 0.88rem; color: var(--gray-800);
+      min-width: 0;
+    }
+    .url-import-input::placeholder { color: var(--gray-400); }
+    .store-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.65rem; }
+    .store-chip {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.75rem; font-weight: 500; color: var(--gray-600);
+      background: white; border: 1px solid var(--gray-200); border-radius: 20px;
+      padding: 0.2rem 0.6rem; cursor: pointer; transition: all 0.12s; user-select: none;
+    }
+    .store-chip:hover { border-color: var(--green-400); color: var(--green-700); background: var(--green-50); }
+    .store-chip-muted { cursor: default; color: var(--gray-400); }
+    .store-chip-muted:hover { border-color: var(--gray-200); color: var(--gray-400); background: white; }
+    .btn-row {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 6px;
+      border: none; cursor: pointer; background: transparent;
+      transition: background 0.15s, color 0.15s;
+      vertical-align: middle;
+    }
+    .btn-row + .btn-row { margin-left: 4px; }
+    .btn-row-consume { color: var(--green-600); }
+    .btn-row-consume:hover { background: var(--green-100); }
+    .btn-row-remove { color: var(--gray-400); }
+    .btn-row-remove:hover { background: #fee2e2; color: var(--red-500); }
+    .row-expired td { opacity: 0.5; text-decoration: line-through; text-decoration-color: var(--red-300,#fca5a5); }
+    .row-expired .row-actions { opacity: 1; text-decoration: none; }
+
+    .plan-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-top: 1rem; }
+    @media (max-width: 768px) { .plan-grid { grid-template-columns: 1fr; } }
+    .day-card {
+      background: var(--gray-50);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+      border-left: 3px solid var(--green-400);
+    }
+    .day-card h4 {
+      font-size: 0.8rem; font-weight: 600;
+      color: var(--green-700);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .meal-item { margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .meal-label { font-weight: 600; color: var(--gray-700); }
+    .meal-recipe { color: var(--gray-600); }
+    .meal-ingredients { font-size: 0.75rem; color: var(--gray-400); margin-top: 0.15rem; }
+    .shopping-card {
+      background: var(--green-50);
+      border: 1px solid var(--green-200);
+      border-radius: var(--radius-sm);
+      padding: 1.25rem;
+      position: sticky; top: 90px;
+    }
+    .shopping-card h4 { font-size: 0.85rem; font-weight: 600; color: var(--green-800); margin-bottom: 0.75rem; }
+    .shopping-list { list-style: none; }
+    .shopping-list li {
+      padding: 0.4rem 0; font-size: 0.85rem; color: var(--gray-700);
+      display: flex; align-items: center; gap: 0.5rem;
+      border-bottom: 1px solid var(--green-100);
+    }
+    .shopping-list li:last-child { border-bottom: none; }
+    .shopping-list li::before {
+      content: ""; width: 14px; height: 14px;
+      border: 2px solid var(--green-300); border-radius: 3px; flex-shrink: 0;
+    }
+    .waste-saved-banner {
+      background: linear-gradient(135deg, var(--green-600), var(--green-700));
+      color: white; border-radius: var(--radius-sm);
+      padding: 1rem 1.25rem; margin-top: 1rem;
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .waste-saved-banner .ws-icon { font-size: 1.5rem; }
+    .waste-saved-banner .ws-text { font-size: 0.85rem; font-weight: 500; }
+    .waste-saved-banner .ws-value { font-size: 1.1rem; font-weight: 700; }
+
+    .status-text { font-size: 0.82rem; color: var(--gray-400); margin-top: 0.5rem; min-height: 1.2rem; }
+    .status-success { color: var(--green-600); font-weight: 500; }
+    .status-error { color: var(--red-500); font-weight: 500; }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--gray-200); border-top-color: var(--green-500); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .select-field {
+      border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
+      padding: 0.5rem 0.75rem; font-family: inherit; font-size: 0.85rem;
+      background: white; color: var(--gray-700);
+    }
+    .select-field:focus { outline: none; border-color: var(--green-400); box-shadow: 0 0 0 3px var(--green-100); }
+    .plan-controls { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--gray-400); }
+    .empty-state-icon { margin-bottom: 0.75rem; }
+    .empty-state-icon svg { width: 40px; height: 40px; stroke: var(--gray-300); }
+    .empty-state-text { font-size: 0.88rem; }
+
+    /* Degraded-mode banner */
+    .db-banner {
+      display: flex; align-items: center; gap: 0.6rem;
+      background: #fffbeb; border-bottom: 1px solid #fde68a;
+      padding: 0.6rem 1.5rem;
+      font-size: 0.82rem; color: #92400e;
+    }
+    .db-banner-icon { display: flex; flex-shrink: 0; color: #d97706; }
+
+    /* Icon utilities */
+    .icon { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
+    .icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-sm svg { width: 14px; height: 14px; }
+    .icon-lg svg { width: 24px; height: 24px; }
+    .brand-icon .icon svg { width: 18px; height: 18px; stroke: white; }
+    .upload-icon .icon svg { width: 28px; height: 28px; stroke: var(--green-600); }
+    .waste-saved-banner .ws-icon .icon svg { width: 22px; height: 22px; stroke: white; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <div class="brand">
+      <div class="brand-icon"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6 2 10c0 2.5 1.5 4.5 3.5 5.5L4 22h16l-1.5-6.5C20.5 14.5 22 12.5 22 10c0-4-4.48-8-10-8z"/><path d="M8 10h8M12 8v4"/></svg></span></div>
+      PantryPilot
+    </div>
+    <div id="waste-badge" class="impact-pill"
+         hx-get="/metrics"
+         hx-trigger="load, every 15s"
+         hx-swap="innerHTML">
+      <span class="impact-dot"></span> Loading…
+    </div>
+  </div>
+</nav>
+
+<!-- Degraded-mode banner (empty when DB is healthy, amber bar when down) -->
+<div id="db-health"
+     hx-get="/health"
+     hx-trigger="load, every 30s"
+     hx-swap="innerHTML">
+</div>
+
+<div class="tabs">
+  <div class="tabs-inner">
+    <button class="tab active" data-tab="pantry">My Pantry</button>
+    <button class="tab" data-tab="add">Add Items</button>
+    <button class="tab" data-tab="plan">Meal Plan</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- TAB: Pantry -->
+  <div class="tab-content active" id="tab-pantry">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Pantry Items</div>
+          <div class="card-subtitle">Sorted by expiry — use the urgent ones first</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <button class="btn btn-ghost" style="font-size:0.8rem;white-space:nowrap"
+                  hx-post="/pantry/sweep-expired"
+                  hx-target="#pantry-body"
+                  hx-swap="innerHTML"
+                  hx-confirm="Remove all expired items from the pantry?">
+            Sweep expired
+          </button>
+          <button class="btn btn-ghost"
+                  hx-post="/pantry/reset"
+                  hx-target="#pantry-body"
+                  hx-swap="innerHTML"
+                  hx-confirm="Reset pantry to demo seed data? This clears all items, meal plans and waste events."
+                  hx-on::after-request="htmx.trigger('#waste-badge','load')">
+            <span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span> Reset
+          </button>
+        </div>
+      </div>
+      <div class="pantry-table-wrap">
+      <table class="pantry-table">
+        <colgroup>
+          <col class="col-item"><col class="col-qty"><col class="col-cat"><col class="col-exp"><col class="col-actions">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Item</th><th>Qty</th><th>Category</th><th>Expires</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="pantry-body" hx-get="/pantry-rows" hx-trigger="load">
+          {% for item in pantry %}
+          <tr>
+            <td style="font-weight:500">{{ item.name }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.category }}</td>
+            <td class="{{ 'expiry-urgent' if item.days_left is defined and item.days_left <= 2 else ('expiry-soon' if item.days_left is defined and item.days_left <= 5 else 'expiry-ok') }}">
+              {{ item.expires_at[:10] if item.expires_at else '—' }}
+            </td>
+            <td></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span></div><div class="empty-state-text">No items yet — add items via receipt scan or order import</div></div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Add Items -->
+  <div class="tab-content" id="tab-add">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Import from Any Grocery Site</div>
+          <div class="card-subtitle">Paste any order confirmation, cart, or grocery page URL</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0">
+          <span class="source-badge source-badge-mcp" style="white-space:nowrap">Bright Data MCP</span>
+          <span class="source-badge source-badge-mcp" style="white-space:nowrap">Gemini AI</span>
+        </div>
+      </div>
+      <div style="padding:0.25rem 0 1rem">
+
+        <!-- URL input -->
+        <div class="url-import-row">
+          <span class="url-import-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+          </span>
+          <input id="import-url" type="url" class="url-import-input"
+                 placeholder="https://instacart.com/orders/… or Amazon Fresh, Walmart, any grocery site"
+                 oninput="onUrlInput(this)">
+        </div>
+
+        <!-- Supported stores chips -->
+        <div class="store-chips">
+          <span class="store-chip" onclick="document.getElementById('import-url').value='https://www.instacart.com/store/orders';onUrlInput(document.getElementById('import-url'))">
+            <img src="https://www.google.com/s2/favicons?domain=instacart.com&sz=32" width="14" height="14"> Instacart
+          </span>
+          <span class="store-chip" onclick="document.getElementById('import-url').value='https://www.amazon.com/gp/your-account/order-history?orderFilter=groceries';onUrlInput(document.getElementById('import-url'))">
+            <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" width="14" height="14"> Amazon Fresh
+          </span>
+          <span class="store-chip" onclick="document.getElementById('import-url').value='https://www.walmart.com/orders';onUrlInput(document.getElementById('import-url'))">
+            <img src="https://www.google.com/s2/favicons?domain=walmart.com&sz=32" width="14" height="14"> Walmart
+          </span>
+          <span class="store-chip store-chip-muted">+ any grocery site</span>
+        </div>
+
+        <button class="btn btn-primary" id="url-import-btn"
+                onclick="triggerUrlImport(this)"
+                style="margin-top:1rem;width:100%" disabled>
+          <span class="icon icon-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+          Import Items
+        </button>
+        <div id="url-import-status" class="status-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Meal Plan -->
+  <div class="tab-content" id="tab-plan">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">AI Meal Planner</div>
+          <div class="card-subtitle">Uses expiring items first to reduce food waste</div>
+        </div>
+      </div>
+      <div class="plan-controls">
+        <select id="days-select" class="select-field">
+          <option value="3">3 days</option>
+          <option value="5" selected>5 days</option>
+          <option value="7">7 days</option>
+        </select>
+        <button class="btn btn-primary" id="plan-btn" onclick="triggerPlan()">
+          <span class="icon icon-sm"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span> Generate Plan
+        </button>
+      </div>
+      <div id="plan-status" class="status-text" style="margin-top:0.75rem"></div>
+      <div id="plan-output"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/app.js?v=7"></script>
+</body>
+</html>
