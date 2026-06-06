@@ -16,8 +16,14 @@ check() {
   local expected_status="${4:-200}"
   local body_contains="${5:-}"
 
-  response=$(curl -s -o /tmp/smoke_body.txt -w "%{http_code}" -X "$method" "$url" \
-    -H "Accept: text/html,application/json" 2>/dev/null)
+  if [ "$method" = "POST" ] || [ "$method" = "PUT" ] || [ "$method" = "PATCH" ]; then
+    # Send empty body so Cloud Run's frontend sets Content-Length: 0
+    response=$(curl -s -o /tmp/smoke_body.txt -w "%{http_code}" -X "$method" "$url" \
+      -H "Accept: application/json" --data '' 2>/dev/null)
+  else
+    response=$(curl -s -o /tmp/smoke_body.txt -w "%{http_code}" -X "$method" "$url" \
+      -H "Accept: application/json" 2>/dev/null)
+  fi
 
   if [ "$response" != "$expected_status" ]; then
     echo "  FAIL  $label — expected HTTP $expected_status, got $response"
@@ -45,8 +51,12 @@ echo "────────────────────────�
 
 check "Home page"          GET  "$BASE/"             200  "PantryPilot"
 check "Pantry rows"        GET  "$BASE/pantry-rows"  200  ""
-check "Metrics (HTML)"     GET  "$BASE/metrics"      200  "pantry_count"
+check "Metrics (JSON)"     GET  "$BASE/metrics"      200  "pantry_count"
 check "Health check"       GET  "$BASE/health"       200  ""
+
+if [ "${SMOKE_PLAN:-0}" = "1" ]; then
+  check "Plan generation"  POST "$BASE/plan?days=3"  200  "plan"
+fi
 
 echo "────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

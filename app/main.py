@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from app.agent import run_plan_agent
 from app.brightdata_mcp import scrape_url
 from app.ingest.expiry import estimate_expiry_days, expires_at
-from app.ingest.receipt import ParsedItem, parse_markdown_text, parse_receipt
+from app.ingest.receipt import parse_markdown_text, parse_receipt
 from app.mcp_client import mcp_delete_many, mcp_find, mcp_insert_many, mcp_update_many
 from app.tools_local import get_waste_stats, ingest_items, read_pantry
 
@@ -201,7 +201,6 @@ async def pantry_rows():
 @app.patch("/pantry/{item_id}/consume", response_class=HTMLResponse)
 async def consume_item(item_id: str):
     """Decrement quantity by 1; remove the item when it reaches 0."""
-    from app.mcp_client import mcp_find
     results = await mcp_find("pantry_items", {"_id": item_id}, limit=1)
     if not results:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -366,6 +365,11 @@ async def metrics(request: Request):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import os
     import uvicorn
     from app.config import PORT
-    uvicorn.run("app.main:app", host="0.0.0.0", port=PORT, reload=True)
+    # Reload only in local dev; Cloud Run / production must run a stable worker
+    # otherwise WatchFiles cycles the process and kills in-flight requests
+    # (e.g. the slow Bright Data scrape), surfacing as a 503 from the LB.
+    reload = os.getenv("UVICORN_RELOAD", "0") == "1"
+    uvicorn.run("app.main:app", host="0.0.0.0", port=PORT, reload=reload)

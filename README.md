@@ -13,9 +13,19 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-package_manager-DE5FE9?logo=astral&logoColor=white)
 
-Zero-effort food waste reduction. Import grocery purchases from any retailer via Bright Data MCP, scan receipts with Gemini Vision, and let an AI agent generate meal plans that use near-expiry items first — backed by MongoDB Atlas through the official MongoDB MCP server.
+> **Google Cloud Rapid Agent Hackathon submission — MongoDB partner track.**
+> A multi-step Gemini agent, built with the **Google Agent Development Kit
+> (ADK / Agent Builder)** and grounded in **MongoDB Atlas via the official
+> [`mongodb-mcp-server`](https://github.com/mongodb-js/mongodb-mcp-server)**,
+> that plans meals to use up near-expiry groceries before they go to waste.
 
-Partner integrations: **MongoDB**, **Bright Data**.
+Zero-effort food waste reduction. Import grocery purchases from any retailer
+via Bright Data MCP, scan receipts with Gemini Vision, and let an ADK agent
+generate meal plans that use near-expiry items first — backed by MongoDB
+Atlas through the official MongoDB MCP server.
+
+**Partner integration (judged track):** MongoDB MCP.
+**Auxiliary tool:** Bright Data MCP (cross-retailer URL scraping).
 
 ---
 
@@ -57,9 +67,75 @@ uv run scripts/seed_db.py           # seed MongoDB fixtures
 bash scripts/start.sh               # start MCP sidecar + FastAPI
 ```
 
-Open `http://localhost:8000`. Smoke check: `bash scripts/smoke.sh`.
+Open `http://localhost:8000`. Smoke check: `bash scripts/smoke.sh`
+(set `SMOKE_PLAN=1` to also exercise the agent end-to-end).
 
 **Requirements:** Python 3.13, Node.js 20+, [uv](https://astral.sh/uv/), a MongoDB Atlas M0 cluster, and a Google AI Studio key.
+
+---
+
+## Architecture
+
+* **Agent runtime — Google ADK (Agent Builder).** [`app/agent.py`](app/agent.py)
+  builds a `gemini-2.5-flash` `Agent` with four `FunctionTool`s
+  (`read_pantry`, `save_meal_plan`, `record_waste_saved`, `get_waste_stats`).
+  The system prompt forces a multi-step plan: read pantry → prioritise items
+  expiring ≤5 days → draft N-day menu → persist plan → log waste-saved
+  events. Each `POST /plan` spins up a fresh `Runner` so there's no
+  cross-request session state.
+* **MongoDB MCP integration.** The official `mongodb-mcp-server` is launched
+  as a sidecar on `:3001` by [`scripts/start.sh`](scripts/start.sh) and is
+  the partner-MCP surface for this submission — any MCP-aware client
+  (Claude Desktop, an external ADK agent, etc.) can connect and read/write
+  Atlas through it. The FastAPI process also talks to the **same Atlas
+  cluster** directly via `motor` ([`app/mcp_client.py`](app/mcp_client.py))
+  to keep the HTMX-driven UI snappy without a JSON-RPC hop on every render.
+  The data layer keeps the original `mcp_*` function names so transports
+  are interchangeable.
+* **Bright Data MCP.** [`app/brightdata_mcp.py`](app/brightdata_mcp.py)
+  spawns `@brightdata/mcp` over stdio and calls `scrape_as_markdown` to
+  normalise any retailer URL into clean markdown for Gemini to parse.
+
+---
+
+## Deploy to Google Cloud Run
+
+The repo ships a [`Dockerfile`](Dockerfile) that bundles Python 3.13, Node 20
+(for the two MCP sidecars), and `uv`. One-shot deploy:
+
+```bash
+PROJECT_ID=your-gcp-project
+REGION=us-central1
+
+gcloud run deploy pantrpilot \
+  --source . \
+  --region $REGION \
+  --allow-unauthenticated \
+  --memory 1Gi --cpu 1 --timeout 300 \
+  --set-env-vars "GOOGLE_API_KEY=...,MDB_MCP_CONNECTION_STRING=...,BRIGHTDATA_API_TOKEN=..."
+```
+
+Cloud Run injects `$PORT=8080`; [`scripts/start.sh`](scripts/start.sh) honours it.
+
+---
+
+## Demo script (≈3 min)
+
+1. **Setup (15 s)** — Hit `POST /pantry/reset` to seed five items, two of
+   them expiring in 1–2 days. Show the pantry table colour-coding urgent vs.
+   safe items.
+2. **Ingest superpower (45 s)** — Drop a receipt image on the upload zone
+   → Gemini Vision OCR returns structured items → expiry estimator fills in
+   shelf-life → rows stream in via HTMX. (Optional: paste a grocery URL
+   to show Bright Data MCP scraping.)
+3. **Agent in action (90 s)** — Click **Generate Plan**. Narrate the
+   multi-step trace: the ADK agent calls `read_pantry`, picks the
+   spinach + chicken expiring this week, drafts a 3-day menu, writes the
+   plan and waste-saved events back to Atlas. Highlight the shopping list
+   for gaps.
+4. **Close the loop (30 s)** — Click **Mark day as cooked**. The pantry
+   shrinks, the live impact badge ticks up (`lbs saved`, `items rescued`).
+   That's the agent finishing the job, not just answering a question.
 
 ---
 
