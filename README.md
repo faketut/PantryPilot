@@ -9,7 +9,6 @@
 ![Gemini](https://img.shields.io/badge/Gemini-2.5_Flash-4285F4?logo=googlegemini&logoColor=white)
 ![Google ADK](https://img.shields.io/badge/Google_ADK-2.1-4285F4?logo=google&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-1.27-000000?logo=anthropic&logoColor=white)
-![Bright Data](https://img.shields.io/badge/Bright_Data-MCP-0F62FE?logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-package_manager-DE5FE9?logo=astral&logoColor=white)
 
@@ -19,13 +18,11 @@
 > [`mongodb-mcp-server`](https://github.com/mongodb-js/mongodb-mcp-server)**,
 > that plans meals to use up near-expiry groceries before they go to waste.
 
-Zero-effort food waste reduction. Import grocery purchases from any retailer
-via Bright Data MCP, scan receipts with Gemini Vision, and let an ADK agent
-generate meal plans that use near-expiry items first — backed by MongoDB
-Atlas through the official MongoDB MCP server.
+Zero-effort food waste reduction. Scan grocery receipts with Gemini Vision
+and let an ADK agent generate meal plans that use near-expiry items first —
+backed by MongoDB Atlas through the official MongoDB MCP server.
 
 **Partner integration (judged track):** MongoDB MCP.
-**Auxiliary tool:** Bright Data MCP (cross-retailer URL scraping).
 
 ---
 
@@ -35,11 +32,8 @@ Atlas through the official MongoDB MCP server.
 
 ```mermaid
 flowchart LR
-    A[Grocery URL] --> B[Bright Data MCP<br/>scrape_as_markdown]
-    B --> C[Gemini 2.5 Flash<br/>structured extraction]
-    C --> D[(MongoDB Atlas<br/>pantry_items)]
     G[Receipt photo] --> H[Gemini Vision OCR]
-    H --> D
+    H --> D[(MongoDB Atlas<br/>pantry_items)]
 ```
 
 ### Plan meals and track waste
@@ -92,9 +86,6 @@ Open `http://localhost:8000`. Smoke check: `bash scripts/smoke.sh`
   to keep the HTMX-driven UI snappy without a JSON-RPC hop on every render.
   The data layer keeps the original `mcp_*` function names so transports
   are interchangeable.
-* **Bright Data MCP.** [`app/brightdata_mcp.py`](app/brightdata_mcp.py)
-  spawns `@brightdata/mcp` over stdio and calls `scrape_as_markdown` to
-  normalise any retailer URL into clean markdown for Gemini to parse.
 
 ---
 
@@ -112,12 +103,7 @@ gcloud run deploy pantrpilot \
   --region $REGION \
   --allow-unauthenticated \
   --memory 1Gi --cpu 1 --timeout 300 \
-  --set-env-vars "GOOGLE_API_KEY=...,MDB_MCP_CONNECTION_STRING=...,BRIGHTDATA_API_TOKEN=..."
-```
-
-Cloud Run injects `$PORT=8080`; [`scripts/start.sh`](scripts/start.sh) honours it.
-
----
+  --set-env-vars "GOOGLE_API_KEY=...,MDB_MCP_CONNECTION_STRING=..."
 
 ## Demo script (≈3 min)
 
@@ -126,8 +112,7 @@ Cloud Run injects `$PORT=8080`; [`scripts/start.sh`](scripts/start.sh) honours i
    safe items.
 2. **Ingest superpower (45 s)** — Drop a receipt image on the upload zone
    → Gemini Vision OCR returns structured items → expiry estimator fills in
-   shelf-life → rows stream in via HTMX. (Optional: paste a grocery URL
-   to show Bright Data MCP scraping.)
+   shelf-life → rows stream in via HTMX.
 3. **Agent in action (90 s)** — Click **Generate Plan**. Narrate the
    multi-step trace: the ADK agent calls `read_pantry`, picks the
    spinach + chicken expiring this week, drafts a 3-day menu, writes the
@@ -141,4 +126,4 @@ Cloud Run injects `$PORT=8080`; [`scripts/start.sh`](scripts/start.sh) honours i
 
 ## Configuration & integrations
 
-Configuration lives in `.env`. Required: `GOOGLE_API_KEY` (Gemini Vision + ADK) and `MDB_MCP_CONNECTION_STRING` (Atlas). Optional: `BRIGHTDATA_API_TOKEN` (5,000 free scrapes/month — enables URL import), `MDB_TLS_ALLOW_INVALID_CERTS=true` (corporate networks with TLS inspection), `MCP_TRANSPORT` (`http` default or `stdio`), `PORT` (default `8000`). Two MCP servers run as sidecars: `mongodb-mcp-server` exposes Atlas to the ADK agent, and `@brightdata/mcp` powers cross-retailer URL scraping.
+Configuration lives in `.env`. Required: `GOOGLE_API_KEY` (Gemini Vision + ADK) and `MDB_MCP_CONNECTION_STRING` (Atlas). Optional: `MDB_TLS_ALLOW_INVALID_CERTS=true` (corporate networks with TLS inspection), `MCP_TRANSPORT` (`http` default or `stdio`), `PORT` (default `8000`). The `mongodb-mcp-server` sidecar exposes Atlas to external MCP clients.

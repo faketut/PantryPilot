@@ -20,6 +20,10 @@ COPY pyproject.toml ./
 COPY uv.lock* ./
 RUN uv sync --frozen --no-dev 2>/dev/null || uv sync --no-dev
 
+# Pre-install MongoDB MCP server globally so the runtime never pays the npx
+# download cost on first call.
+RUN npm install -g mongodb-mcp-server@latest
+
 COPY . .
 
 ENV PORT=8080

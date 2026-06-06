@@ -10,46 +10,44 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ---- URL import (Bright Data MCP) -----------------------------------
-function onUrlInput(input) {
-  const btn = document.getElementById('url-import-btn');
-  if (btn) btn.disabled = !input.value.trim().startsWith('http');
-}
+// ---- Receipt OCR upload (Gemini Vision) -----------------------------
+async function triggerReceiptUpload(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const status = document.getElementById('receipt-status');
+  const text = document.getElementById('receipt-text');
+  const originalText = text ? text.innerHTML : '';
+  if (text) text.innerHTML = '<span class="spinner"></span> Reading receipt with Gemini Vision…';
+  if (status) { status.textContent = ''; status.className = 'status-text'; }
 
-async function triggerUrlImport(btn) {
-  const urlInput = document.getElementById('import-url');
-  const url = urlInput ? urlInput.value.trim() : '';
-  if (!url) return;
-  const statusEl = document.getElementById('url-import-status');
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Scraping & extracting…';
+  const form = new FormData();
+  form.append('file', file);
   try {
-    const res = await fetch(`/import/url?url=${encodeURIComponent(url)}`, { method: 'POST' });
-    const html = await res.text();
+    const res = await fetch('/receipt', { method: 'POST', body: form });
+    const body = await res.text();
     if (res.ok) {
       const pantryBody = document.getElementById('pantry-body');
-      if (pantryBody) pantryBody.innerHTML = html;
-      if (statusEl) {
-        statusEl.textContent = '✓ Items extracted — check My Pantry tab';
-        statusEl.className = 'status-text status-success';
+      if (pantryBody) pantryBody.innerHTML = body;
+      if (status) {
+        status.textContent = '✓ Items extracted — check My Pantry tab';
+        status.className = 'status-text status-success';
       }
     } else {
-      let msg = html;
-      try { msg = JSON.parse(html).detail || html; } catch {}
-      if (statusEl) {
-        statusEl.textContent = 'Import failed: ' + msg;
-        statusEl.className = 'status-text status-error';
+      let msg = body;
+      try { msg = JSON.parse(body).detail || body; } catch {}
+      if (status) {
+        status.textContent = 'Receipt failed: ' + msg;
+        status.className = 'status-text status-error';
       }
     }
   } catch (e) {
-    if (statusEl) {
-      statusEl.textContent = 'Error: ' + (e.message || 'unknown error');
-      statusEl.className = 'status-text status-error';
+    if (status) {
+      status.textContent = 'Error: ' + (e.message || 'unknown error');
+      status.className = 'status-text status-error';
     }
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = orig;
+    if (text) text.innerHTML = originalText;
+    input.value = '';
   }
 }
 

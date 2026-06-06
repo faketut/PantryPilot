@@ -6,6 +6,7 @@ no session memory). The agent uses FunctionTools that write/read through
 the MongoDB MCP server.
 """
 import json
+import logging
 import uuid
 
 from google.adk import Agent
@@ -20,6 +21,8 @@ from app.tools_local import (
     record_waste_saved,
     get_waste_stats,
 )
+
+log = logging.getLogger("pantrpilot.agent")
 
 SYSTEM_PROMPT = """
 You are PantryPilot, an AI chef that minimises food waste.
@@ -41,7 +44,17 @@ Your job for every plan request:
    - "waste_saved_grams": float
    - "summary": str (one-sentence human-readable summary)
 
-Respond ONLY with valid JSON — no markdown, no explanation outside the JSON.
+CRITICAL OUTPUT RULES:
+- After you finish all tool calls (read_pantry, save_meal_plan,
+  record_waste_saved), you MUST send one final assistant message whose entire
+  text content is a single JSON object matching the schema in step 7.
+- The final text message is REQUIRED — do not end the turn with only tool
+  calls. The JSON object is the user-visible result.
+- No prose, no markdown code fences, no preamble like "Here is your plan:".
+- If the pantry is empty, skip save_meal_plan and record_waste_saved and
+  return the JSON with plan=[], missing_ingredients=[], waste_saved_grams=0,
+  and summary explaining that the pantry is empty.
+- Never apologise or chat. Respond with JSON only.
 """.strip()
 
 
@@ -83,15 +96,27 @@ async def run_plan_agent(days: int = 5) -> dict:
     )
 
     final_text = ""
+    all_text = ""  # fallback: accumulate any text the agent emitted
+    event_count = 0
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
         new_message=user_message,
     ):
-        if event.is_final_response() and event.content:
+        event_count += 1
+        # Collect text from every event with text parts (final or intermediate)
+        if event.content and event.content.parts:
             for part in event.content.parts:
                 if hasattr(part, "text") and part.text:
-                    final_text += part.text
+                    all_text += part.text
+                    if event.is_final_response():
+                        final_text += part.text
+    log.info("Agent run: %d events, final_text=%d chars, all_text=%d chars",
+             event_count, len(final_text), len(all_text))
+    # If the agent never emitted a final text response, fall back to anything
+    # textual it said along the way.
+    if not final_text.strip():
+        final_text = all_text
 
     # Strip potential markdown code fences
     cleaned = final_text.strip()
@@ -113,4 +138,14 @@ async def run_plan_agent(days: int = 5) -> dict:
                 return json.loads(m.group(0))
             except json.JSONDecodeError:
                 pass
-        return {"error": "Agent returned non-JSON", "raw": final_text[:500]}
+        log.warning("Agent returned non-JSON. Raw text: %r", final_text)
+        # Graceful fallback: return a valid plan shape so the UI can display
+        # the agent's message instead of a 500.
+        message = final_text.strip() or "Agent produced no output."
+        return {
+            "days": days,
+            "plan": [],
+            "missing_ingredients": [],
+            "waste_saved_grams": 0,
+            "summary": message[:400],
+        }

@@ -66,31 +66,3 @@ async def parse_receipt(image_bytes: bytes, mime_type: str = "image/jpeg") -> li
 
     data = json.loads(response.text)
     return [ParsedItem(**item) for item in data.get("items", [])]
-
-
-async def parse_markdown_text(text: str) -> list[ParsedItem]:
-    """Feed scraped webpage markdown to Gemini and extract grocery items."""
-    import json
-
-    # Trim to avoid token overflow — keep first 8k chars which covers most order pages
-    trimmed = text[:8000]
-    prompt = (
-        "The following is a grocery order confirmation or shopping page (scraped as markdown). "
-        "Extract every food/grocery item purchased. "
-        "Normalize names (e.g. 'Organic Whole Milk 1 gal' → name='milk', quantity=1, unit='gallon', category='dairy'). "
-        "Ignore non-food items (packaging, delivery fees, etc.). "
-        "Return valid JSON matching the provided schema.\n\n"
-        f"--- PAGE CONTENT ---\n{trimmed}"
-    )
-
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[prompt],
-        config=genai_types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_SCHEMA,
-        ),
-    )
-
-    data = json.loads(response.text)
-    return [ParsedItem(**item) for item in data.get("items", [])]

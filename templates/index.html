@@ -143,6 +143,7 @@
     @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
 
     .upload-zone {
+      display: block;
       border: 2px dashed var(--green-200);
       border-radius: var(--radius-sm);
       padding: 2.5rem 1.5rem;
@@ -217,31 +218,6 @@
     }
     .source-badge-mcp { background: var(--green-100); color: var(--green-700); }
 
-    /* URL import card */
-    .url-import-row {
-      display: flex; align-items: center; gap: 0.6rem;
-      border: 1.5px solid var(--gray-200); border-radius: 0.65rem;
-      padding: 0.55rem 0.8rem; background: var(--gray-50);
-      transition: border-color 0.15s;
-    }
-    .url-import-row:focus-within { border-color: var(--green-400); background: white; }
-    .url-import-icon { color: var(--gray-400); flex-shrink: 0; display:flex; }
-    .url-import-input {
-      flex: 1; border: none; background: transparent; outline: none;
-      font-size: 0.88rem; color: var(--gray-800);
-      min-width: 0;
-    }
-    .url-import-input::placeholder { color: var(--gray-400); }
-    .store-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.65rem; }
-    .store-chip {
-      display: inline-flex; align-items: center; gap: 0.3rem;
-      font-size: 0.75rem; font-weight: 500; color: var(--gray-600);
-      background: white; border: 1px solid var(--gray-200); border-radius: 20px;
-      padding: 0.2rem 0.6rem; cursor: pointer; transition: all 0.12s; user-select: none;
-    }
-    .store-chip:hover { border-color: var(--green-400); color: var(--green-700); background: var(--green-50); }
-    .store-chip-muted { cursor: default; color: var(--gray-400); }
-    .store-chip-muted:hover { border-color: var(--gray-200); color: var(--gray-400); background: white; }
     .btn-row {
       display: inline-flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; border-radius: 6px;
@@ -435,54 +411,28 @@
 
   <!-- TAB: Add Items -->
   <div class="tab-content" id="tab-add">
+
+    <!-- Receipt OCR card -->
     <div class="card">
       <div class="card-header">
         <div>
-          <div class="card-title">Import from Any Grocery Site</div>
-          <div class="card-subtitle">Paste any order confirmation, cart, or grocery page URL</div>
+          <div class="card-title">Scan a Receipt</div>
+          <div class="card-subtitle">Snap any grocery receipt — Gemini Vision extracts items in seconds</div>
         </div>
-        <div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0">
-          <span class="source-badge source-badge-mcp" style="white-space:nowrap">Bright Data MCP</span>
-          <span class="source-badge source-badge-mcp" style="white-space:nowrap">Gemini AI</span>
-        </div>
+        <span class="source-badge source-badge-mcp" style="white-space:nowrap">Gemini Vision</span>
       </div>
-      <div style="padding:0.25rem 0 1rem">
 
-        <!-- URL input -->
-        <div class="url-import-row">
-          <span class="url-import-icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-            </svg>
-          </span>
-          <input id="import-url" type="url" class="url-import-input"
-                 placeholder="https://instacart.com/orders/… or Amazon Fresh, Walmart, any grocery site"
-                 oninput="onUrlInput(this)">
+      <label class="upload-zone" id="receipt-zone">
+        <div class="upload-icon">
+          <span class="icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
         </div>
-
-        <!-- Supported stores chips -->
-        <div class="store-chips">
-          <span class="store-chip" onclick="document.getElementById('import-url').value='https://www.instacart.com/store/orders';onUrlInput(document.getElementById('import-url'))">
-            <img src="https://www.google.com/s2/favicons?domain=instacart.com&sz=32" width="14" height="14"> Instacart
-          </span>
-          <span class="store-chip" onclick="document.getElementById('import-url').value='https://www.amazon.com/gp/your-account/order-history?orderFilter=groceries';onUrlInput(document.getElementById('import-url'))">
-            <img src="https://www.google.com/s2/favicons?domain=amazon.com&sz=32" width="14" height="14"> Amazon Fresh
-          </span>
-          <span class="store-chip" onclick="document.getElementById('import-url').value='https://www.walmart.com/orders';onUrlInput(document.getElementById('import-url'))">
-            <img src="https://www.google.com/s2/favicons?domain=walmart.com&sz=32" width="14" height="14"> Walmart
-          </span>
-          <span class="store-chip store-chip-muted">+ any grocery site</span>
+        <div class="upload-text" id="receipt-text">
+          Click to upload a receipt photo (JPG, PNG, max 10&nbsp;MB)
         </div>
-
-        <button class="btn btn-primary" id="url-import-btn"
-                onclick="triggerUrlImport(this)"
-                style="margin-top:1rem;width:100%" disabled>
-          <span class="icon icon-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
-          Import Items
-        </button>
-        <div id="url-import-status" class="status-text"></div>
-      </div>
+        <input id="receipt-file" type="file" accept="image/*"
+               onchange="triggerReceiptUpload(this)">
+      </label>
+      <div id="receipt-status" class="status-text"></div>
     </div>
   </div>
 
@@ -512,6 +462,6 @@
 
 </div>
 
-<script src="/static/app.js?v=7"></script>
+<script src="/static/app.js?v=10"></script>
 </body>
 </html>

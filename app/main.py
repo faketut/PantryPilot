@@ -11,9 +11,8 @@ from fastapi.templating import Jinja2Templates
 logger = logging.getLogger(__name__)
 
 from app.agent import run_plan_agent
-from app.brightdata_mcp import scrape_url
 from app.ingest.expiry import estimate_expiry_days, expires_at
-from app.ingest.receipt import parse_markdown_text, parse_receipt
+from app.ingest.receipt import parse_receipt
 from app.mcp_client import mcp_delete_many, mcp_find, mcp_insert_many, mcp_update_many
 from app.tools_local import get_waste_stats, ingest_items, read_pantry
 
@@ -141,46 +140,6 @@ async def upload_receipt(file: UploadFile = File(...)):
             "expires_at": expires_at(days),
             "source": "receipt",
         })
-    await ingest_items(enriched)
-    return HTMLResponse(await _pantry_rows_html())
-
-
-# ---------------------------------------------------------------------------
-# URL import (Bright Data MCP → Gemini parse)
-# ---------------------------------------------------------------------------
-
-@app.post("/import/url", response_class=HTMLResponse)
-async def import_from_url(url: str):
-    """Scrape any grocery URL via Bright Data MCP, parse items with Gemini."""
-    if not url or not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="A valid http/https URL is required")
-
-    scrape = await scrape_url(url)
-
-    if scrape.no_token:
-        raise HTTPException(
-            status_code=503,
-            detail="BRIGHTDATA_API_TOKEN not configured. Add it to .env and restart.",
-        )
-    if not scrape.success:
-        raise HTTPException(status_code=502, detail=f"Scrape failed: {scrape.error}")
-
-    parsed = await parse_markdown_text(scrape.markdown)
-    if not parsed:
-        raise HTTPException(status_code=422, detail="No grocery items found on that page")
-
-    enriched = []
-    for item in parsed:
-        days = await estimate_expiry_days(item.name, item.category)
-        enriched.append({
-            "name": item.name,
-            "quantity": item.quantity,
-            "unit": item.unit,
-            "category": item.category,
-            "expires_at": expires_at(days),
-            "source": "brightdata",
-        })
-
     await ingest_items(enriched)
     return HTMLResponse(await _pantry_rows_html())
 
