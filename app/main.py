@@ -277,7 +277,7 @@ async def consume_batch(request: Request):
         sort=[("expires_at", 1)],
         limit=_MAX_BATCH_INGREDIENTS * 10,
     )
-    remaining = Counter(names)
+    remaining: dict[str, float] = {k: float(v) for k, v in Counter(names).items()}
     to_delete: list[str] = []
     for item in matches:
         nm = (item.get("name") or "").lower()
