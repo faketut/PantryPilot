@@ -153,6 +153,11 @@
       background: var(--green-50);
     }
     .upload-zone:hover { border-color: var(--green-400); background: var(--green-100); }
+    .upload-zone.is-dragover {
+      border-color: var(--green-500);
+      background: var(--green-100);
+      transform: scale(1.01);
+    }
     .upload-icon {
       width: 56px; height: 56px;
       background: var(--green-100);
@@ -288,6 +293,122 @@
     .htmx-request .htmx-indicator { display: inline-flex; align-items: center; gap: 0.4rem; }
     .spinner { width: 14px; height: 14px; border: 2px solid var(--gray-200); border-top-color: var(--green-500); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Skeleton loader for plan generation */
+    .skeleton-day {
+      background: var(--gray-50);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+      border-left: 3px solid var(--gray-200);
+    }
+    .skeleton-bar {
+      height: 12px; border-radius: 6px;
+      background: linear-gradient(90deg, var(--gray-100) 0%, var(--gray-200) 50%, var(--gray-100) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s linear infinite;
+      margin-bottom: 0.5rem;
+    }
+    .skeleton-bar.w-30 { width: 30%; }
+    .skeleton-bar.w-60 { width: 60%; }
+    .skeleton-bar.w-80 { width: 80%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .stream-log {
+      font-size: 0.75rem; color: var(--gray-500);
+      margin-top: 0.5rem; font-family: ui-monospace, monospace;
+      max-height: 80px; overflow-y: auto;
+    }
+    .stream-log .step { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
+    .stream-log .step .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green-400); }
+
+    /* Cooked-day visual state */
+    .day-card.is-cooked {
+      opacity: 0.55;
+      border-left-color: var(--gray-300);
+      background: var(--gray-100);
+    }
+    .day-card.is-cooked .meal-recipe { text-decoration: line-through; }
+    .day-card.is-cooked .btn { display: none; }
+    .day-card .cooked-badge {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      font-size: 0.7rem; font-weight: 600;
+      color: var(--green-700); background: var(--green-100);
+      padding: 0.15rem 0.5rem; border-radius: 999px;
+      margin-left: 0.5rem;
+    }
+
+    /* Hero impact card */
+    .hero-card {
+      background: linear-gradient(135deg, var(--green-600), var(--green-700));
+      color: white;
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow-md);
+    }
+    .hero-card-inner {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      align-items: center;
+    }
+    .hero-stat { text-align: center; }
+    .hero-num {
+      font-size: 1.75rem; font-weight: 700; line-height: 1.1;
+    }
+    .hero-label {
+      font-size: 0.72rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      opacity: 0.85; margin-top: 0.15rem;
+    }
+    @media (max-width: 480px) {
+      .hero-num { font-size: 1.35rem; }
+      .hero-label { font-size: 0.65rem; }
+    }
+
+    /* Undo toast */
+    .toast-stack {
+      position: fixed; bottom: 1.25rem; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; gap: 0.5rem;
+      z-index: 9999; pointer-events: none;
+      max-width: 90vw;
+    }
+    .toast {
+      pointer-events: auto;
+      background: var(--gray-800); color: white;
+      border-radius: 999px;
+      padding: 0.55rem 0.85rem 0.55rem 1.1rem;
+      box-shadow: var(--shadow-md);
+      display: flex; align-items: center; gap: 0.75rem;
+      font-size: 0.85rem;
+      animation: toast-in 0.18s ease-out;
+    }
+    .toast.is-leaving { animation: toast-out 0.2s ease-in forwards; }
+    .toast button {
+      background: var(--green-500); color: white;
+      border: none; border-radius: 999px;
+      padding: 0.3rem 0.85rem;
+      font-family: inherit; font-size: 0.78rem; font-weight: 600;
+      cursor: pointer;
+    }
+    .toast button:hover { background: var(--green-400); }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateY(0); }
+      to   { opacity: 0; transform: translateY(8px); }
+    }
+
+    /* Mobile: collapse Category column to keep Item/Qty/Expires/actions */
+    @media (max-width: 600px) {
+      .pantry-table .cell-category { display: none; }
+      .pantry-table col.col-cat    { width: 0; }
+      .pantry-table col.col-item   { width: 46%; }
+      .pantry-table col.col-exp    { width: 30%; }
+    }
     .select-field {
       border: 1px solid var(--gray-200); border-radius: var(--radius-sm);
       padding: 0.5rem 0.75rem; font-family: inherit; font-size: 0.85rem;
@@ -355,6 +476,10 @@
 
   <!-- TAB: Pantry -->
   <div class="tab-content active" id="tab-pantry">
+    <div id="hero-card"
+         hx-get="/metrics/hero"
+         hx-trigger="load, every 30s, pantrpilot:metrics-stale from:body"
+         hx-swap="innerHTML"></div>
     <div class="card">
       <div class="card-header">
         <div>
@@ -386,7 +511,7 @@
         </colgroup>
         <thead>
           <tr>
-            <th>Item</th><th>Qty</th><th>Category</th><th>Expires</th><th></th>
+            <th>Item</th><th>Qty</th><th class="cell-category">Category</th><th>Expires</th><th></th>
           </tr>
         </thead>
         <tbody id="pantry-body" hx-get="/pantry-rows" hx-trigger="load">
@@ -394,14 +519,14 @@
           <tr>
             <td style="font-weight:500">{{ item.name }}</td>
             <td>{{ item.quantity }}</td>
-            <td>{{ item.category }}</td>
+            <td class="cell-category">{{ item.category }}</td>
             <td class="{{ 'expiry-urgent' if item.days_left is defined and item.days_left <= 2 else ('expiry-soon' if item.days_left is defined and item.days_left <= 5 else 'expiry-ok') }}">
               {{ item.expires_at[:10] if item.expires_at else '—' }}
             </td>
             <td></td>
           </tr>
           {% else %}
-          <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span></div><div class="empty-state-text">No items yet — add items via receipt scan or order import</div></div></td></tr>
+          <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span></div><div class="empty-state-text">No items yet — scan a receipt in the Add Items tab</div></div></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -427,9 +552,9 @@
           <span class="icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
         </div>
         <div class="upload-text" id="receipt-text">
-          Click to upload a receipt photo (JPG, PNG, max 10&nbsp;MB)
+          Drop a receipt photo or click to upload &mdash; on mobile this opens the camera
         </div>
-        <input id="receipt-file" type="file" accept="image/*"
+        <input id="receipt-file" type="file" accept="image/*" capture="environment"
                onchange="triggerReceiptUpload(this)">
       </label>
       <div id="receipt-status" class="status-text"></div>
@@ -462,6 +587,7 @@
 
 </div>
 
-<script src="/static/app.js?v=10"></script>
+<script src="/static/app.js?v=12"></script>
+<div class="toast-stack" id="toast-stack"></div>
 </body>
 </html>

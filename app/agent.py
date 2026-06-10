@@ -81,8 +81,15 @@ def _make_agent(days: int = 5) -> Agent:
     return _AGENT_CACHE[days]
 
 
-async def run_plan_agent(days: int = 5) -> dict:
-    """Run one planning cycle; returns the structured plan dict."""
+async def run_plan_agent_stream(days: int = 5):
+    """Yield progress events while the planning agent runs.
+
+    Event shapes:
+        {"event": "started", "days": N}
+        {"event": "tool_call", "name": str}
+        {"event": "tool_result", "name": str}
+        {"event": "final", "plan": dict}
+    """
     agent = _make_agent(days)
     session_service = InMemorySessionService()
     runner = Runner(
@@ -104,8 +111,10 @@ async def run_plan_agent(days: int = 5) -> dict:
         parts=[Part(text=f"Generate a {days}-day meal plan from my pantry.")],
     )
 
+    yield {"event": "started", "days": days}
+
     final_text = ""
-    all_text = ""  # fallback: accumulate any text the agent emitted
+    all_text = ""
     event_count = 0
     async for event in runner.run_async(
         user_id=user_id,
@@ -113,22 +122,29 @@ async def run_plan_agent(days: int = 5) -> dict:
         new_message=user_message,
     ):
         event_count += 1
-        # Collect text from every event with text parts (final or intermediate)
         if event.content and event.content.parts:
             for part in event.content.parts:
+                fc = getattr(part, "function_call", None)
+                if fc is not None and getattr(fc, "name", None):
+                    yield {"event": "tool_call", "name": fc.name}
+                fr = getattr(part, "function_response", None)
+                if fr is not None and getattr(fr, "name", None):
+                    yield {"event": "tool_result", "name": fr.name}
                 if hasattr(part, "text") and part.text:
                     all_text += part.text
                     if event.is_final_response():
                         final_text += part.text
-    log.info("Agent run: %d events, final_text=%d chars, all_text=%d chars",
-             event_count, len(final_text), len(all_text))
-    # If the agent never emitted a final text response, fall back to anything
-    # textual it said along the way.
-    if not final_text.strip():
-        final_text = all_text
+    log.info(
+        "Agent run: %d events, final_text=%d chars, all_text=%d chars",
+        event_count, len(final_text), len(all_text),
+    )
+    plan = _parse_plan_text(final_text or all_text, days)
+    yield {"event": "final", "plan": plan}
 
-    # Strip potential markdown code fences
-    cleaned = final_text.strip()
+
+def _parse_plan_text(text: str, days: int) -> dict:
+    """Best-effort extract a structured plan dict from the agent's final text."""
+    cleaned = (text or "").strip()
     for prefix in ("```json", "```JSON", "```"):
         if cleaned.startswith(prefix):
             cleaned = cleaned[len(prefix):]
@@ -139,22 +155,38 @@ async def run_plan_agent(days: int = 5) -> dict:
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        # Try extracting JSON object from anywhere in the response
         import re
-        m = re.search(r'\{[\s\S]+\}', final_text)
+        m = re.search(r"\{[\s\S]+\}", text or "")
         if m:
             try:
                 return json.loads(m.group(0))
             except json.JSONDecodeError:
                 pass
-        log.warning("Agent returned non-JSON. Raw text: %r", final_text)
-        # Graceful fallback: return a valid plan shape so the UI can display
-        # the agent's message instead of a 500.
-        message = final_text.strip() or "Agent produced no output."
-        return {
-            "days": days,
-            "plan": [],
-            "missing_ingredients": [],
-            "waste_saved_grams": 0,
-            "summary": message[:400],
-        }
+    log.warning("Agent returned non-JSON. Raw text: %r", text)
+    message = (text or "").strip() or "Agent produced no output."
+    return {
+        "days": days,
+        "plan": [],
+        "missing_ingredients": [],
+        "waste_saved_grams": 0,
+        "summary": message[:400],
+    }
+
+
+async def run_plan_agent(days: int = 5) -> dict:
+    """Run one planning cycle; returns the structured plan dict.
+
+    Thin wrapper around :func:`run_plan_agent_stream` for callers that don't
+    care about intermediate progress events.
+    """
+    final: dict | None = None
+    async for ev in run_plan_agent_stream(days):
+        if ev.get("event") == "final":
+            final = ev.get("plan")
+    return final or {
+        "days": days,
+        "plan": [],
+        "missing_ingredients": [],
+        "waste_saved_grams": 0,
+        "summary": "Agent produced no output.",
+    }

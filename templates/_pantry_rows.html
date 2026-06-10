@@ -19,14 +19,13 @@
 <tr{% if row.expired %} class="row-expired"{% endif %}>
   <td style="font-weight:500">{{ row.name }}</td>
   <td>{{ row.qty }}</td>
-  <td>{{ row.category }}</td>
+  <td class="cell-category">{{ row.category }}</td>
   <td class="{{ row.expiry_class }}">{{ row.exp_str }}</td>
   <td class="row-actions">
     {%- if not row.expired -%}
     <button class="btn-row btn-row-consume" title="Mark one used"
             hx-patch="/pantry/{{ row.item_id }}/consume"
-            hx-target="#pantry-body" hx-swap="innerHTML"
-            hx-confirm="Mark one {{ row.name }} as used?">
+            hx-target="#pantry-body" hx-swap="innerHTML">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="20 6 9 17 4 12"/>
@@ -35,8 +34,7 @@
     {%- endif -%}
     <button class="btn-row btn-row-remove" title="Remove"
             hx-delete="/pantry/{{ row.item_id }}"
-            hx-target="#pantry-body" hx-swap="innerHTML"
-            hx-confirm="Remove {{ row.name }} from pantry?">
+            hx-target="#pantry-body" hx-swap="innerHTML">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="3 6 5 6 21 6"/>
