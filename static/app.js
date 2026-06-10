@@ -97,7 +97,6 @@ function _toolLabel(name) {
   return ({
     read_pantry: 'Reading pantry',
     save_meal_plan: 'Saving meal plan',
-    record_waste_saved: 'Recording waste saved',
     get_waste_stats: 'Fetching impact stats',
   })[name] || name;
 }
@@ -255,9 +254,10 @@ function renderPlan(plan) {
   }
 
   let bannerHtml = '';
-  if (plan.waste_saved_grams) {
-    const lbs = (plan.waste_saved_grams / 453.6).toFixed(2);
-    bannerHtml = `<div class="waste-saved-banner"><span class="ws-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></span><span class="ws-text">Food waste avoided: <span class="ws-value">~${lbs} lbs</span></span></div>`;
+  const projected = plan.projected_waste_saved_grams ?? plan.waste_saved_grams;
+  if (projected) {
+    const lbs = (projected / 453.6).toFixed(2);
+    bannerHtml = `<div class="waste-saved-banner"><span class="ws-icon icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></span><span class="ws-text">Potential waste avoided if you cook this plan: <span class="ws-value">~${lbs} lbs</span></span></div>`;
   }
 
   return `<div class="plan-grid"><div>${daysHtml}</div><div>${sideHtml}</div></div>${bannerHtml}`;

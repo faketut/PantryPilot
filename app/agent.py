@@ -18,7 +18,6 @@ from google.genai.types import Content, Part
 from app.tools_local import (
     get_waste_stats,
     read_pantry,
-    record_waste_saved,
     save_meal_plan,
 )
 
@@ -34,27 +33,29 @@ Your job for every plan request:
 4. List ingredients required by the plan vs. what is in the pantry → produce a
    'missing_ingredients' list (items not in pantry or with quantity 0).
 5. Call save_meal_plan() with the full plan JSON.
-6. For each priority pantry item you actually used in the plan, call
-   record_waste_saved(item_id=<the _id from read_pantry>, item_name=<the name>,
-   grams=<estimated weight>). Use 200g for produce, 500g for dairy, 300g for
-   meat, 100g for condiments/spices, and 400g for anything else.
+6. Project (do NOT persist) the waste that *would* be rescued if the user
+   cooks every day of the plan. Sum estimated weights for each priority
+   pantry item the plan actually uses. Use 200g for produce, 500g for dairy,
+   300g for meat, 100g for condiments/spices, and 400g for anything else.
+   This number is a forecast only — actual waste-saved events are recorded
+   later when the user marks a day as cooked.
 7. Return a JSON object with keys:
    - "days": int
    - "plan": list of {{"day": int, "meals": [{{"meal": str, "recipe": str, "ingredients": [str]}}]}}
    - "missing_ingredients": list of str
-   - "waste_saved_grams": float
+   - "projected_waste_saved_grams": float (forecast, not yet recorded)
    - "summary": str (one-sentence human-readable summary)
 
 CRITICAL OUTPUT RULES:
-- After you finish all tool calls (read_pantry, save_meal_plan,
-  record_waste_saved), you MUST send one final assistant message whose entire
-  text content is a single JSON object matching the schema in step 7.
+- After you finish all tool calls (read_pantry, save_meal_plan), you MUST
+  send one final assistant message whose entire text content is a single
+  JSON object matching the schema in step 7.
 - The final text message is REQUIRED — do not end the turn with only tool
   calls. The JSON object is the user-visible result.
 - No prose, no markdown code fences, no preamble like "Here is your plan:".
-- If the pantry is empty, skip save_meal_plan and record_waste_saved and
-  return the JSON with plan=[], missing_ingredients=[], waste_saved_grams=0,
-  and summary explaining that the pantry is empty.
+- If the pantry is empty, skip save_meal_plan and return the JSON with
+  plan=[], missing_ingredients=[], projected_waste_saved_grams=0, and
+  summary explaining that the pantry is empty.
 - Never apologise or chat. Respond with JSON only.
 """.strip()
 
@@ -74,7 +75,6 @@ def _make_agent(days: int = 5) -> Agent:
             tools=[
                 FunctionTool(func=read_pantry),
                 FunctionTool(func=save_meal_plan),
-                FunctionTool(func=record_waste_saved),
                 FunctionTool(func=get_waste_stats),
             ],
         )
@@ -168,7 +168,7 @@ def _parse_plan_text(text: str, days: int) -> dict:
         "days": days,
         "plan": [],
         "missing_ingredients": [],
-        "waste_saved_grams": 0,
+        "projected_waste_saved_grams": 0,
         "summary": message[:400],
     }
 
@@ -187,6 +187,6 @@ async def run_plan_agent(days: int = 5) -> dict:
         "days": days,
         "plan": [],
         "missing_ingredients": [],
-        "waste_saved_grams": 0,
+        "projected_waste_saved_grams": 0,
         "summary": "Agent produced no output.",
     }

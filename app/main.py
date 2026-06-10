@@ -21,7 +21,12 @@ from app.mcp_client import (
     mcp_insert_many,
     mcp_update_many,
 )
-from app.tools_local import get_waste_stats, ingest_items, read_pantry
+from app.tools_local import (
+    get_waste_stats,
+    ingest_items,
+    read_pantry,
+    record_waste_saved,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +252,41 @@ async def sweep_expired():
 
 _MAX_BATCH_INGREDIENTS = 100
 
+# Estimated grams per consumed unit, used to log waste-saved events when a
+# near-expiry pantry row is cooked. Matches the heuristic the planning agent
+# previously used for its projection, so the post-cook number lands close to
+# what the user saw in the generated plan.
+_GRAMS_PER_UNIT_BY_CATEGORY = {
+    "produce": 200.0,
+    "dairy": 500.0,
+    "meat": 300.0,
+    "condiments": 100.0,
+    "spices": 100.0,
+}
+_GRAMS_PER_UNIT_DEFAULT = 400.0
+# Only items expiring within this many days count toward "waste rescued" —
+# eating a year-old box of pasta isn't rescuing anything.
+_RESCUE_WINDOW_DAYS = 5
+
+
+def _grams_for(item: dict, take: float) -> float:
+    cat = (item.get("category") or "").lower()
+    per_unit = _GRAMS_PER_UNIT_BY_CATEGORY.get(cat, _GRAMS_PER_UNIT_DEFAULT)
+    return round(per_unit * max(take, 0), 1)
+
+
+def _is_near_expiry(item: dict, now: datetime) -> bool:
+    exp = item.get("expires_at")
+    if not exp:
+        return False
+    try:
+        exp_dt = datetime.fromisoformat(exp)
+    except (TypeError, ValueError):
+        return False
+    if exp_dt.tzinfo is None:
+        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+    return (exp_dt - now).days <= _RESCUE_WINDOW_DAYS
+
 
 @app.post("/pantry/consume-batch", response_class=HTMLResponse)
 async def consume_batch(request: Request):
@@ -279,6 +319,8 @@ async def consume_batch(request: Request):
     )
     remaining: dict[str, float] = {k: float(v) for k, v in Counter(names).items()}
     to_delete: list[str] = []
+    rescued: list[tuple[dict, float]] = []
+    now = datetime.now(timezone.utc)
     for item in matches:
         nm = (item.get("name") or "").lower()
         if remaining[nm] <= 0:
@@ -298,8 +340,19 @@ async def consume_batch(request: Request):
                 {"_id": item["_id"]},
                 {"$set": {"quantity": new_qty}},
             )
+        if take > 0 and _is_near_expiry(item, now):
+            rescued.append((item, take))
     if to_delete:
         await mcp_delete_many("pantry_items", {"_id": {"$in": to_delete}})
+    for item, take in rescued:
+        try:
+            await record_waste_saved(
+                item_id=item["_id"],
+                item_name=item.get("name", ""),
+                grams=_grams_for(item, take),
+            )
+        except Exception:
+            logger.exception("failed to record waste-saved event for %s", item.get("_id"))
     return HTMLResponse(await _pantry_rows_html())
 
 

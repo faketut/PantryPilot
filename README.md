@@ -81,7 +81,7 @@ flowchart TB
     subgraph App["FastAPI app (app/main.py)"]
         Routes[Routes:<br/>/pantry, /ingest,<br/>/plan, /metrics]
         Ingest[ingest/receipt.py<br/>ingest/expiry.py]
-        Tools[tools_local.py<br/>read_pantry · save_meal_plan<br/>record_waste_saved · get_waste_stats]
+        Tools[tools_local.py<br/>read_pantry · save_meal_plan<br/>record_waste_saved · get_waste_stats<br/><i>record_waste_saved fires on cook,<br/>not on plan</i>]
         Agent[agent.py<br/>Google ADK Runner<br/>gemini-2.5-flash]
         DataLayer[mcp_client.py<br/>motor driver]
     end
@@ -111,11 +111,13 @@ flowchart TB
 ```
 
 * **Agent runtime — Google ADK (Agent Builder).** [`app/agent.py`](app/agent.py)
-  builds a `gemini-2.5-flash` `Agent` with four `FunctionTool`s
-  (`read_pantry`, `save_meal_plan`, `record_waste_saved`, `get_waste_stats`).
+  builds a `gemini-2.5-flash` `Agent` with three `FunctionTool`s
+  (`read_pantry`, `save_meal_plan`, `get_waste_stats`).
   The system prompt forces a multi-step plan: read pantry → prioritise items
-  expiring ≤5 days → draft N-day menu → persist plan → log waste-saved
-  events. Each `POST /plan` spins up a fresh `Runner` so there's no
+  expiring ≤5 days → draft N-day menu → persist plan → project the waste
+  that *would* be rescued. Actual waste-saved events are only written when
+  the user marks a day as cooked, so the impact badge reflects food that was
+  really eaten. Each `POST /plan` spins up a fresh `Runner` so there's no
   cross-request session state.
 * **MongoDB MCP integration.** The official `mongodb-mcp-server` is launched
   as a sidecar on `:3001` by [`scripts/start.sh`](scripts/start.sh) and is
