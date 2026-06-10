@@ -40,7 +40,7 @@ async def _recv(proc: asyncio.subprocess.Process, req_id: int, timeout: float) -
         remaining = deadline - asyncio.get_event_loop().time()
         try:
             raw = await asyncio.wait_for(proc.stdout.readline(), timeout=min(remaining, 5.0))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
         if not raw:
             break
@@ -153,7 +153,7 @@ async def scrape_url(url: str) -> ScrapeResult:
                 proc.stdin.close()
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=3.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
             except Exception:
                 pass

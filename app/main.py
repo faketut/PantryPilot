@@ -8,13 +8,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-logger = logging.getLogger(__name__)
-
 from app.agent import run_plan_agent
 from app.ingest.expiry import estimate_expiry_days, expires_at
 from app.ingest.receipt import parse_receipt
 from app.mcp_client import mcp_delete_many, mcp_find, mcp_insert_many, mcp_update_many
 from app.tools_local import get_waste_stats, ingest_items, read_pantry
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -31,18 +31,11 @@ templates = Jinja2Templates(directory="templates")
 # Shared helper
 # ---------------------------------------------------------------------------
 
-async def _pantry_rows_html() -> str:
-    try:
-        pantry = await read_pantry(limit=100)
-    except Exception:
-        return '<tr><td colspan="5" style="text-align:center;color:#ef4444;padding:1.5rem">Database unreachable — retrying…</td></tr>'
-
+def _build_pantry_rows_view(items: list[dict]) -> list[dict]:
+    """Convert raw pantry docs into the view-model the partial expects."""
     now = datetime.now(timezone.utc)
-    if not pantry:
-        return '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:1.5rem">No items yet.</td></tr>'
-    rows = ""
-    for item in pantry:
-        item_id = item.get("_id", "")
+    rows: list[dict] = []
+    for item in items:
         exp = item.get("expires_at", "")
         try:
             exp_dt = datetime.fromisoformat(exp)
@@ -50,49 +43,47 @@ async def _pantry_rows_html() -> str:
                 exp_dt = exp_dt.replace(tzinfo=timezone.utc)
             days_left = (exp_dt - now).days
             expired = days_left < 0
-            cls = "expiry-urgent" if days_left <= 2 else ("expiry-soon" if days_left <= 5 else "expiry-ok")
+            if days_left <= 2:
+                expiry_class = "expiry-urgent"
+            elif days_left <= 5:
+                expiry_class = "expiry-soon"
+            else:
+                expiry_class = "expiry-ok"
             exp_str = exp[:10]
         except Exception:
             expired = False
-            cls = "expiry-ok"
+            expiry_class = "expiry-ok"
             exp_str = exp[:10] if exp else "—"
-        qty = item.get("quantity", "")
-        try:
-            qty_num = float(qty)
-        except (TypeError, ValueError):
-            qty_num = 1
-        item_name = item.get("name", "")
-        consume_btn = (
-            f"<button class='btn-row btn-row-consume' title='Mark one used'"
-            f" hx-patch='/pantry/{item_id}/consume'"
-            f" hx-target='#pantry-body' hx-swap='innerHTML'"
-            f" hx-confirm='Mark one {item_name} as used?'>"
-            "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' "
-            "stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'>"
-            "<polyline points='20 6 9 17 4 12'/></svg></button>"
-        ) if not expired else ""
-        remove_btn = (
-            f"<button class='btn-row btn-row-remove' title='Remove'"
-            f" hx-delete='/pantry/{item_id}'"
-            f" hx-target='#pantry-body' hx-swap='innerHTML'"
-            f" hx-confirm='Remove {item_name} from pantry?'>"
-            "<svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' "
-            "stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'>"
-            "<polyline points='3 6 5 6 21 6'/>"
-            "<path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/>"
-            "<path d='M10 11v6M14 11v6'/></svg></button>"
-        )
-        row_cls = " class='row-expired'" if expired else ""
-        rows += (
-            f"<tr{row_cls}>"
-            f"<td style='font-weight:500'>{item_name}</td>"
-            f"<td>{qty}</td>"
-            f"<td>{item.get('category','')}</td>"
-            f'<td class="{cls}">{exp_str}</td>'
-            f"<td class='row-actions'>{consume_btn}{remove_btn}</td>"
-            "</tr>"
-        )
+        rows.append({
+            "item_id": str(item.get("_id", "")),
+            "name": item.get("name", ""),
+            "qty": item.get("quantity", ""),
+            "category": item.get("category", ""),
+            "exp_str": exp_str,
+            "expiry_class": expiry_class,
+            "expired": expired,
+        })
     return rows
+
+
+async def _pantry_rows_html() -> str:
+    """Render the pantry-rows partial.
+
+    All escaping is handled by Jinja's autoescape, which is why we no longer
+    f-string user-controlled values into HTML.
+    """
+    error_message: str | None = None
+    try:
+        pantry = await read_pantry(limit=100)
+    except Exception:
+        pantry = []
+        error_message = "Database unreachable — retrying…"
+    rendered = templates.get_template("_pantry_rows.html").render(
+        rows=_build_pantry_rows_view(pantry),
+        empty_message="No items yet.",
+        error_message=error_message,
+    )
+    return rendered
 
 
 # ---------------------------------------------------------------------------
@@ -189,36 +180,41 @@ async def delete_item(item_id: str):
 
 @app.post("/pantry/sweep-expired", response_class=HTMLResponse)
 async def sweep_expired():
-    """Remove all items whose expiry date has passed."""
-    all_items = await mcp_find("pantry_items", {}, limit=1000)
-    expired_ids = []
-    for item in all_items:
-        exp = item.get("expires_at", "")
-        try:
-            exp_dt = datetime.fromisoformat(exp)
-            if exp_dt.tzinfo is None:
-                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-            if exp_dt < datetime.now(timezone.utc):
-                expired_ids.append(item["_id"])
-        except Exception:
-            pass
-    if expired_ids:
-        await mcp_delete_many("pantry_items", {"_id": {"$in": expired_ids}})
+    """Remove all items whose expiry date has passed.
+
+    ISO-8601 strings sort lexicographically, so a single Mongo predicate
+    replaces the previous client-side scan.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await mcp_delete_many("pantry_items", {"expires_at": {"$lt": now_iso}})
     return HTMLResponse(await _pantry_rows_html())
+
+
+_MAX_BATCH_INGREDIENTS = 100
 
 
 @app.post("/pantry/consume-batch", response_class=HTMLResponse)
 async def consume_batch(request: Request):
     """Remove a list of ingredient names from the pantry (post-meal cleanup)."""
     body = await request.json()
-    names = [n.lower().strip() for n in body.get("ingredients", [])]
+    raw = body.get("ingredients", [])
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="ingredients must be a list")
+    if len(raw) > _MAX_BATCH_INGREDIENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"too many ingredients (max {_MAX_BATCH_INGREDIENTS})",
+        )
+    names = [n.lower().strip() for n in raw if isinstance(n, str) and n.strip()]
     if not names:
         return HTMLResponse(await _pantry_rows_html())
-    pantry = await mcp_find("pantry_items", {}, limit=1000)
-    ids_to_delete = []
-    for item in pantry:
-        if item.get("name", "").lower().strip() in names:
-            ids_to_delete.append(item["_id"])
+    # Push the name match into Mongo instead of scanning client-side.
+    matches = await mcp_find(
+        "pantry_items",
+        {"name": {"$in": names}},
+        limit=_MAX_BATCH_INGREDIENTS * 10,
+    )
+    ids_to_delete = [m["_id"] for m in matches if m.get("_id")]
     if ids_to_delete:
         await mcp_delete_many("pantry_items", {"_id": {"$in": ids_to_delete}})
     return HTMLResponse(await _pantry_rows_html())
@@ -325,7 +321,9 @@ async def metrics(request: Request):
 
 if __name__ == "__main__":
     import os
+
     import uvicorn
+
     from app.config import PORT
     # Reload only in local dev; Cloud Run / production must run a stable worker
     # otherwise WatchFiles cycles the process and kills in-flight requests

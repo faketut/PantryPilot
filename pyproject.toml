@@ -17,3 +17,62 @@ dependencies = [
     "python-multipart>=0.0.30",
     "uvicorn[standard]>=0.48.0",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [".venv", "node_modules"]
+
+[tool.ruff.lint]
+# Conservative starter set: pyflakes, pycodestyle, isort, bugbear, simplify.
+select = ["E", "F", "I", "B", "SIM", "UP"]
+# Keep the diff small at adoption time — silence rules that would force
+# unrelated refactors across files we don't otherwise need to touch.
+ignore = [
+    "E501",   # line length (we set 100 but tolerate occasional overflow)
+    "B008",   # FastAPI relies on `File(...)`-as-default
+    "SIM105", # contextlib.suppress is not a clarity win in our error handlers
+    "SIM115", # nested `with` for tempfile-as-stderr is intentional
+    "SIM117", # nested context managers are clearer in MCP client code
+    "UP015",  # explicit open() modes are fine
+    "UP017",  # datetime.UTC migration is its own PR
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"scripts/*" = ["E402"]
+"app/mcp_client.py" = ["E402"]  # import-after-conditional-trip-breaker
+
+[tool.mypy]
+python_version = "3.13"
+# Start permissive; tighten later. The goal is to catch obvious type bugs in
+# our own code without forcing typed stubs for the entire google-adk surface.
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+no_implicit_optional = true
+files = ["app"]
+# brightdata sidecar talks raw asyncio.subprocess; the union-None complaints
+# there are real but the file is already defensively guarded at runtime.
+exclude = ["app/brightdata_mcp.py"]
+
+[[tool.mypy.overrides]]
+module = "app.ingest.receipt"
+# google-genai's overloaded `contents` arg confuses mypy with a list of
+# mixed Part/str. Behaviour is correct at runtime.
+disable_error_code = ["arg-type"]

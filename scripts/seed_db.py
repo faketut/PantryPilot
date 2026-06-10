@@ -6,15 +6,16 @@ Usage:
 """
 import asyncio
 import sys
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import uuid
 
 # Allow running from the project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from app.config import MDB_MCP_CONNECTION_STRING, DB_NAME, MDB_TLS_ALLOW_INVALID_CERTS
+
+from app.config import DB_NAME, MDB_MCP_CONNECTION_STRING, MDB_TLS_ALLOW_INVALID_CERTS
 
 
 async def seed():
@@ -92,6 +93,12 @@ async def seed():
     await db["waste_saved_events"].drop()
     await db["waste_saved_events"].create_index([("created_at", -1)])
     print("  waste_saved_events: collection ready (empty)")
+
+    # ---- expiry_learned (Gemini-derived shelf-life cache) --------------
+    # Do NOT drop — this is a learned-knowledge cache that should accumulate
+    # across deploys. Just ensure the collection + index exist.
+    await db["expiry_learned"].create_index([("name", 1), ("category", 1)])
+    print("  expiry_learned: collection ready (preserved across runs)")
 
     client.close()
     print("\nSeeding complete. Run 'bash scripts/start.sh' to start the app.")

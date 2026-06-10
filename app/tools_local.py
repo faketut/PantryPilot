@@ -1,9 +1,47 @@
-"""ADK FunctionTools — thin wrappers that call mcp_client helpers."""
+"""ADK FunctionTools — thin wrappers that call mcp_client helpers.
+
+When ``PLAN_VIA_MCP=true``, reads/writes that the planning agent performs
+are routed through the official MongoDB MCP sidecar (``app.mcp_sidecar``)
+so the integration is exercised end-to-end. The UI hot-path still uses
+direct motor via ``mcp_client`` regardless of the flag.
+"""
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
-from app.mcp_client import mcp_find, mcp_insert_many, mcp_update_many, mcp_aggregate
+from app.config import PLAN_VIA_MCP
+from app.mcp_client import mcp_aggregate, mcp_find, mcp_insert_many, mcp_update_many
+from app.mcp_sidecar import mcp_sidecar_find, mcp_sidecar_insert_many
+
+log = logging.getLogger(__name__)
+
+
+async def _find(collection: str, **kwargs) -> list[dict]:
+    """Pick the read transport based on PLAN_VIA_MCP, with motor fallback."""
+    if PLAN_VIA_MCP:
+        try:
+            return await mcp_sidecar_find(collection, **kwargs)
+        except Exception:
+            log.warning(
+                "PLAN_VIA_MCP=true but sidecar find failed; falling back to "
+                "direct motor for this call.",
+                exc_info=True,
+            )
+    return await mcp_find(collection, **kwargs)
+
+
+async def _insert_many(collection: str, documents: list[dict]) -> dict:
+    """Pick the write transport based on PLAN_VIA_MCP, with motor fallback."""
+    if PLAN_VIA_MCP:
+        try:
+            return await mcp_sidecar_insert_many(collection, documents)
+        except Exception:
+            log.warning(
+                "PLAN_VIA_MCP=true but sidecar insert-many failed; falling "
+                "back to direct motor for this call.",
+                exc_info=True,
+            )
+    return await mcp_insert_many(collection, documents)
 
 
 # ---------------------------------------------------------------------------
@@ -30,13 +68,13 @@ async def ingest_items(items: list[dict]) -> dict:
         }
         for item in items
     ]
-    result = await mcp_insert_many("pantry_items", docs)
+    result = await _insert_many("pantry_items", docs)
     return {"inserted": len(docs), "detail": result}
 
 
 async def read_pantry(limit: int = 50) -> list[dict]:
     """Return pantry items sorted by expiry (soonest first)."""
-    return await mcp_find(
+    return await _find(
         "pantry_items",
         filter={},
         sort=[("expires_at", 1)],
@@ -57,7 +95,7 @@ async def save_meal_plan(plan: dict) -> dict:
     """Persist a meal plan document."""
     plan.setdefault("_id", str(uuid.uuid4()))
     plan.setdefault("created_at", datetime.now(timezone.utc).isoformat())
-    result = await mcp_insert_many("meal_plans", [plan])
+    result = await _insert_many("meal_plans", [plan])
     return {"plan_id": plan["_id"], "detail": result}
 
 
@@ -70,7 +108,7 @@ async def record_waste_saved(item_id: str, item_name: str, grams: float) -> dict
         "grams_saved": grams,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    result = await mcp_insert_many("waste_saved_events", [doc])
+    result = await _insert_many("waste_saved_events", [doc])
     return {"event_id": doc["_id"], "grams_saved": grams, "detail": result}
 
 

@@ -16,10 +16,10 @@ from google.adk.tools import FunctionTool
 from google.genai.types import Content, Part
 
 from app.tools_local import (
-    read_pantry,
-    save_meal_plan,
-    record_waste_saved,
     get_waste_stats,
+    read_pantry,
+    record_waste_saved,
+    save_meal_plan,
 )
 
 log = logging.getLogger("pantrpilot.agent")
@@ -34,9 +34,10 @@ Your job for every plan request:
 4. List ingredients required by the plan vs. what is in the pantry → produce a
    'missing_ingredients' list (items not in pantry or with quantity 0).
 5. Call save_meal_plan() with the full plan JSON.
-6. For each priority item included in the plan, call record_waste_saved() with
-   an estimated weight in grams (use 200g for produce, 500g for dairy, 300g for meat,
-   100g for condiments/spices, 400g for other).
+6. For each priority pantry item you actually used in the plan, call
+   record_waste_saved(item_id=<the _id from read_pantry>, item_name=<the name>,
+   grams=<estimated weight>). Use 200g for produce, 500g for dairy, 300g for
+   meat, 100g for condiments/spices, and 400g for anything else.
 7. Return a JSON object with keys:
    - "days": int
    - "plan": list of {{"day": int, "meals": [{{"meal": str, "recipe": str, "ingredients": [str]}}]}}
@@ -58,18 +59,26 @@ CRITICAL OUTPUT RULES:
 """.strip()
 
 
+# Agents are stateless once built (no per-request memory in our setup), so we
+# cache one per `days` value to avoid rebuilding tools/instructions on every
+# /plan call. Keeps Cloud Run cold paths snappier.
+_AGENT_CACHE: dict[int, Agent] = {}
+
+
 def _make_agent(days: int = 5) -> Agent:
-    return Agent(
-        name="pantry_chef",
-        model="gemini-2.5-flash",
-        instruction=SYSTEM_PROMPT.replace("{days}", str(days)),
-        tools=[
-            FunctionTool(func=read_pantry),
-            FunctionTool(func=save_meal_plan),
-            FunctionTool(func=record_waste_saved),
-            FunctionTool(func=get_waste_stats),
-        ],
-    )
+    if days not in _AGENT_CACHE:
+        _AGENT_CACHE[days] = Agent(
+            name="pantry_chef",
+            model="gemini-2.5-flash",
+            instruction=SYSTEM_PROMPT.replace("{days}", str(days)),
+            tools=[
+                FunctionTool(func=read_pantry),
+                FunctionTool(func=save_meal_plan),
+                FunctionTool(func=record_waste_saved),
+                FunctionTool(func=get_waste_stats),
+            ],
+        )
+    return _AGENT_CACHE[days]
 
 
 async def run_plan_agent(days: int = 5) -> dict:

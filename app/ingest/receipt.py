@@ -1,4 +1,7 @@
 """Receipt OCR via Gemini Vision → list of structured ParsedItem dicts."""
+import asyncio
+import json
+
 from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel
@@ -45,8 +48,6 @@ _SCHEMA = {
 
 async def parse_receipt(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[ParsedItem]:
     """Call Gemini Vision with structured output schema; returns normalized items."""
-    import json
-
     image_part = genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
     prompt = (
         "This is a grocery receipt or shopping list. "
@@ -55,7 +56,10 @@ async def parse_receipt(image_bytes: bytes, mime_type: str = "image/jpeg") -> li
         "Return valid JSON matching the provided schema."
     )
 
-    response = client.models.generate_content(
+    # google-genai's generate_content is synchronous and blocks the event loop;
+    # offload to a worker thread so the FastAPI handler stays responsive.
+    response = await asyncio.to_thread(
+        client.models.generate_content,
         model="gemini-2.5-flash",
         contents=[image_part, prompt],
         config=genai_types.GenerateContentConfig(
@@ -64,5 +68,7 @@ async def parse_receipt(image_bytes: bytes, mime_type: str = "image/jpeg") -> li
         ),
     )
 
+    if not response.text:
+        return []
     data = json.loads(response.text)
     return [ParsedItem(**item) for item in data.get("items", [])]

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies (with dev group)
+        run: uv sync --group dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check app tests scripts
+
+      - name: Type-check (mypy)
+        run: uv run mypy
+
+      - name: Run tests (pytest)
+        # Tests stub Mongo + Gemini; they do not need real credentials.
+        run: uv run pytest -q

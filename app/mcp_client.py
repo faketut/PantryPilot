@@ -13,12 +13,22 @@ Architecture note (read this before judging the MongoDB MCP integration):
 * The public helpers below preserve the original ``mcp_*`` names so callers
   (tools_local.py, ingest modules) can swap transports without changes.
 """
+import logging
 from typing import Any
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.config import MDB_MCP_CONNECTION_STRING, MDB_TLS_ALLOW_INVALID_CERTS
+
+log = logging.getLogger(__name__)
+
+if MDB_TLS_ALLOW_INVALID_CERTS:
+    log.warning(
+        "MDB_TLS_ALLOW_INVALID_CERTS=true — TLS certificate validation is "
+        "DISABLED for MongoDB. Only safe behind a trusted TLS-intercepting "
+        "proxy; do not use in production."
+    )
 
 DB_NAME = "pantrpilot"
 
@@ -57,19 +67,24 @@ def _db():
 
 
 def _trip_breaker():
-    """Trip the circuit breaker after a DB error."""
+    """Trip the circuit breaker and drop the stale motor client."""
     global _circuit_open_until
     _circuit_open_until = _time.time() + _CIRCUIT_OPEN_DURATION
+    _reset_client()
 
 
 def _reset_client():
     """Force a new client on next call (call after a connection error)."""
     global _client
     if _client is not None:
-        _client.close()
+        try:
+            _client.close()
+        except Exception:
+            pass
     _client = None
 
 import functools
+
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
 
@@ -79,7 +94,7 @@ def _with_circuit_breaker(func):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
-        except (ConnectionFailure, ServerSelectionTimeoutError, ConnectionError, OSError) as e:
+        except (ConnectionFailure, ServerSelectionTimeoutError, ConnectionError, OSError):
             _trip_breaker()
             raise
     return wrapper
@@ -144,9 +159,16 @@ async def mcp_update_many(
     collection: str,
     filter: dict,
     update: dict,
+    upsert: bool = False,
 ) -> dict:
-    result = await _db()[collection].update_many(_oid_filter(filter), update)
-    return {"matched": result.matched_count, "modified": result.modified_count}
+    result = await _db()[collection].update_many(
+        _oid_filter(filter), update, upsert=upsert
+    )
+    return {
+        "matched": result.matched_count,
+        "modified": result.modified_count,
+        "upserted_id": str(result.upserted_id) if result.upserted_id else None,
+    }
 
 
 @_with_circuit_breaker
