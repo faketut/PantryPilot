@@ -70,6 +70,46 @@ Open `http://localhost:8000`. Smoke check: `bash scripts/smoke.sh`
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    User([User browser])
+
+    subgraph Frontend["Frontend (HTMX + Jinja)"]
+        UI[index.html<br/>static/app.js]
+    end
+
+    subgraph App["FastAPI app (app/main.py)"]
+        Routes[Routes:<br/>/pantry, /ingest,<br/>/plan, /metrics]
+        Ingest[ingest/receipt.py<br/>ingest/expiry.py]
+        Tools[tools_local.py<br/>read_pantry · save_meal_plan<br/>record_waste_saved · get_waste_stats]
+        Agent[agent.py<br/>Google ADK Runner<br/>gemini-2.5-flash]
+        DataLayer[mcp_client.py<br/>motor driver]
+    end
+
+    subgraph Sidecars["Node sidecars (scripts/start.sh)"]
+        MdbMCP[mongodb-mcp-server<br/>:3001]
+        BrightData[brightdata MCP<br/>optional]
+    end
+
+    subgraph Cloud["Google Cloud / External"]
+        Gemini[Gemini 2.5 Flash<br/>+ Vision OCR]
+        Atlas[(MongoDB Atlas<br/>pantry_items ·<br/>meal_plans ·<br/>waste_saved_events)]
+    end
+
+    User <--> UI
+    UI <--> Routes
+    Routes --> Ingest
+    Ingest --> Gemini
+    Routes --> Agent
+    Agent --> Tools
+    Agent --> Gemini
+    Tools --> DataLayer
+    Routes --> DataLayer
+    DataLayer <--> Atlas
+    MdbMCP <--> Atlas
+    ExtClient([External MCP client<br/>Claude Desktop, etc.]) <--> MdbMCP
+```
+
 * **Agent runtime — Google ADK (Agent Builder).** [`app/agent.py`](app/agent.py)
   builds a `gemini-2.5-flash` `Agent` with four `FunctionTool`s
   (`read_pantry`, `save_meal_plan`, `record_waste_saved`, `get_waste_stats`).
