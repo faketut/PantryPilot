@@ -9,34 +9,72 @@
    Jinja auto-escapes every {{ ... }} interpolation, which is what closes
    the OCR-driven XSS surface we used to have when building HTML by string
    concatenation in Python.
+
+   The class names ``expiry-urgent`` / ``expiry-soon`` / ``expiry-ok``,
+   ``btn-row-consume``, ``btn-row-remove`` and the "Database unreachable" /
+   "No items yet." copy are asserted by tests/test_pantry_rows.py — keep
+   them stable when restyling.
 #}
 {%- if error_message -%}
-<tr><td colspan="5" style="text-align:center;color:#ef4444;padding:1.5rem">{{ error_message }}</td></tr>
+<tr>
+  <td colspan="5" class="empty-state-row">
+    <div class="empty-state">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+             style="stroke: var(--red-500);">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <div class="empty-state-text" style="color: var(--red-500); font-weight: 600;">
+        {{ error_message }}
+      </div>
+    </div>
+  </td>
+</tr>
 {%- elif not rows -%}
-<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:1.5rem">{{ empty_message }}</td></tr>
+<tr>
+  <td colspan="5">
+    <div class="empty-state">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+      </div>
+      <div class="empty-state-text">{{ empty_message }}</div>
+    </div>
+  </td>
+</tr>
 {%- else -%}
 {%- for row in rows -%}
 <tr{% if row.expired %} class="row-expired"{% endif %}>
-  <td style="font-weight:500">{{ row.name }}</td>
+  <td style="font-weight:600">{{ row.name }}</td>
   <td>{{ row.qty }}</td>
   <td class="cell-category">{{ row.category }}</td>
   <td class="{{ row.expiry_class }}">{{ row.exp_str }}</td>
   <td class="row-actions">
     {%- if not row.expired -%}
-    <button class="btn-row btn-row-consume" title="Mark one used"
+    <button type="button" class="btn-row btn-row-consume"
+            title="Mark one used" aria-label="Mark one {{ row.name }} used"
             hx-patch="/pantry/{{ row.item_id }}/consume"
             hx-target="#pantry-body" hx-swap="innerHTML">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="20 6 9 17 4 12"/>
       </svg>
     </button>
     {%- endif -%}
-    <button class="btn-row btn-row-remove" title="Remove"
+    <button type="button" class="btn-row btn-row-remove"
+            title="Remove" aria-label="Remove {{ row.name }}"
             hx-delete="/pantry/{{ row.item_id }}"
             hx-target="#pantry-body" hx-swap="innerHTML">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="3 6 5 6 21 6"/>
         <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
         <path d="M10 11v6M14 11v6"/>

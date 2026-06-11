@@ -106,6 +106,12 @@ function triggerReceiptUpload(input) {
 })();
 
 // ---- Plan generation (streaming) -------------------------------------
+// Inline SVG (Heroicons / Lucide-style) instead of emoji glyphs so the
+// cooked badge + stream log match the design system rule "no emojis as icons".
+const _COOKED_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:11px;height:11px"><polyline points="20 6 9 17 4 12"/></svg>';
+const _COOKED_BADGE = '<span class="cooked-badge">' + _COOKED_SVG + ' cooked</span>';
+const _STREAM_ARROW = '&#8250;'; // single right-pointing angle quote, not an emoji
+const _STREAM_CHECK = '&#10003;'; // U+2713 check mark (text glyph)
 const _planBtnLabel = '<span class="icon icon-sm"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span> Generate Plan';
 const _planBtnLoading = '<span class="spinner"></span> Generating…';
 let _planLoadedOnce = false;
@@ -193,9 +199,9 @@ async function triggerPlan() {
         if (ev.event === 'started') {
           _appendStreamLog(`Started planning ${ev.days} days`);
         } else if (ev.event === 'tool_call') {
-          _appendStreamLog(`→ ${_toolLabel(ev.name)}`);
+          _appendStreamLog(`${_STREAM_ARROW} ${_toolLabel(ev.name)}`);
         } else if (ev.event === 'tool_result') {
-          _appendStreamLog(`✓ ${_toolLabel(ev.name)}`);
+          _appendStreamLog(`${_STREAM_CHECK} ${_toolLabel(ev.name)}`);
         } else if (ev.event === 'final') {
           finalPlan = ev.plan;
         } else if (ev.event === 'plan_id') {
@@ -236,7 +242,7 @@ function renderPlan(plan) {
     (day.meals || []).forEach(m => (m.ingredients || []).forEach(i => dayIngredients.push(i)));
 
     daysHtml += `<div class="day-card ${isCooked ? 'is-cooked' : ''}" data-day="${dayNum}">`;
-    daysHtml += `<h4>Day ${dayNum}${isCooked ? '<span class="cooked-badge">✓ cooked</span>' : ''}</h4>`;
+    daysHtml += `<h4>Day ${dayNum}${isCooked ? _COOKED_BADGE : ''}</h4>`;
     (day.meals || []).forEach(meal => {
       daysHtml += `<div class="meal-item"><span class="meal-label">${meal.meal}:</span> <span class="meal-recipe">${meal.recipe}</span>`;
       if (meal.ingredients && meal.ingredients.length) {
@@ -269,7 +275,7 @@ function renderPlan(plan) {
     sideHtml += `<button class="btn btn-secondary" style="margin-top:0.75rem" onclick='copyShoppingList(${JSON.stringify(plan.missing_ingredients)})'><span class="icon icon-sm"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> Copy list</button>`;
     sideHtml += '</div>';
   } else {
-    sideHtml += '<div class="shopping-card"><h4>All Set</h4><p style="font-size:0.85rem;color:var(--green-700)">Your pantry has everything you need!</p></div>';
+    sideHtml += '<div class="shopping-card"><h4>All Set</h4><p style="font-size:0.88rem;color:var(--brand-700)">Your pantry has everything you need!</p></div>';
   }
 
   let bannerHtml = '';
@@ -310,7 +316,7 @@ async function markDayUsed(btn) {
       card.classList.add('is-cooked');
       const h4 = card.querySelector('h4');
       if (h4 && !h4.querySelector('.cooked-badge')) {
-        h4.insertAdjacentHTML('beforeend', '<span class="cooked-badge">✓ cooked</span>');
+        h4.insertAdjacentHTML('beforeend', _COOKED_BADGE);
       }
       btn.remove();
     }

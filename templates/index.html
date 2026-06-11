@@ -3,162 +3,303 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PantryPilot</title>
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#FEF2F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#170808" media="(prefers-color-scheme: dark)">
+  <title>PantryPilot — cook what you have</title>
+
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=1">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Karla:wght@300;400;500;600;700&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
+
+  {# Tailwind Play CDN with custom theme tokens (Recipe & Cooking / Soft UI Evolution). #}
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'media',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#FFF1F2',
+              100: '#FFE4E6',
+              200: '#FECDD3',
+              300: '#FDA4AF',
+              400: '#FB7185',
+              500: '#F43F5E',
+              600: '#DC2626',
+              700: '#B91C1C',
+              800: '#7F1D1D',
+              900: '#450A0A',
+            },
+            gold: {
+              300: '#FCD34D',
+              400: '#FACC15',
+              500: '#EAB308',
+              600: '#CA8A04',
+              700: '#A16207',
+            },
+          },
+          fontFamily: {
+            display: ['"Playfair Display SC"', 'Georgia', 'serif'],
+            sans: ['Karla', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          boxShadow: {
+            'soft-sm': '0 1px 2px rgb(0 0 0 / 0.04)',
+            'soft':    '0 4px 12px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.05)',
+            'soft-md': '0 8px 22px rgb(0 0 0 / 0.07), 0 2px 6px rgb(0 0 0 / 0.04)',
+            'soft-lg': '0 16px 36px rgb(0 0 0 / 0.09), 0 4px 10px rgb(0 0 0 / 0.04)',
+            'glow-cta':'0 6px 18px -4px rgb(202 138 4 / 0.45)',
+          },
+          keyframes: {
+            'fade-in': { '0%': { opacity: 0, transform: 'translateY(4px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+          },
+          animation: {
+            'fade-in': 'fade-in 240ms cubic-bezier(.2,.7,.3,1) both',
+          },
+        }
+      }
+    }
+  </script>
+
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
-<body>
 
-<nav class="navbar">
-  <div class="navbar-inner">
-    <div class="brand">
-      <div class="brand-icon"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6 2 10c0 2.5 1.5 4.5 3.5 5.5L4 22h16l-1.5-6.5C20.5 14.5 22 12.5 22 10c0-4-4.48-8-10-8z"/><path d="M8 10h8M12 8v4"/></svg></span></div>
-      PantryPilot
+<body class="font-sans antialiased min-h-screen bg-brand-50 text-brand-900 selection:bg-brand-200 selection:text-brand-900
+             dark:bg-[#170808] dark:text-rose-100">
+
+  {# ---------------------------------------------------------------- Navbar #}
+  <nav class="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-brand-200/60
+              dark:bg-[#1F0A0A]/85 dark:border-brand-900/70">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <a href="/" class="flex items-center gap-2.5 text-brand-700 dark:text-brand-400 group">
+        <span class="h-9 w-9 rounded-xl grid place-items-center text-white shadow-soft
+                     bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700
+                     transition group-hover:shadow-soft-md">
+          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 13h12v5a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-5z"/>
+            <path d="M5 13h14"/>
+            <path d="M8 9a3 3 0 0 1 4-2.83A3 3 0 0 1 16 9a2 2 0 0 1 2 2v2H6v-2a2 2 0 0 1 2-2z"/>
+          </svg>
+        </span>
+        <span class="font-display text-xl tracking-tight">PantryPilot</span>
+      </a>
+
+      <div id="waste-badge"
+           class="impact-pill"
+           hx-get="/metrics"
+           hx-trigger="load, every 15s"
+           hx-swap="innerHTML">
+        <span class="impact-dot"></span> Loading…
+      </div>
     </div>
-    <div id="waste-badge" class="impact-pill"
-         hx-get="/metrics"
-         hx-trigger="load, every 15s"
-         hx-swap="innerHTML">
-      <span class="impact-dot"></span> Loading…
+  </nav>
+
+  {# ----------------------------------- Degraded-mode banner (HTML from /health) #}
+  <div id="db-health"
+       hx-get="/health"
+       hx-trigger="load, every 30s"
+       hx-swap="innerHTML">
+  </div>
+
+  {# ---------------------------------------------------------------- Hero #}
+  <header class="relative overflow-hidden">
+    <div aria-hidden="true"
+         class="pointer-events-none absolute inset-x-0 -top-10 h-72
+                bg-[radial-gradient(60%_55%_at_50%_0%,rgba(252,211,77,0.32),transparent_70%)]
+                dark:bg-[radial-gradient(60%_55%_at_50%_0%,rgba(252,211,77,0.10),transparent_70%)]"></div>
+
+    <div class="relative max-w-6xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-brand-600/85 dark:text-brand-400">
+        Cook what you have
+      </p>
+      <h1 class="mt-3 font-display text-3xl sm:text-4xl lg:text-5xl leading-[1.08] text-brand-900 dark:text-rose-100">
+        Turn your pantry into
+        <span class="bg-gradient-to-r from-brand-600 via-brand-700 to-gold-600 bg-clip-text text-transparent">delicious meals</span>,<br class="hidden sm:block"/>
+        before anything goes to waste.
+      </h1>
+      <p class="mt-3 text-sm sm:text-base text-brand-800/80 dark:text-rose-200/75 max-w-2xl">
+        Snap a receipt, watch your shelves fill in, then let the AI planner build meals
+        that finish the items closest to expiry first.
+      </p>
+
+      <div id="hero-card" class="mt-7 animate-fade-in"
+           hx-get="/metrics/hero"
+           hx-trigger="load, every 30s, pantrpilot:metrics-stale from:body"
+           hx-swap="innerHTML"></div>
+    </div>
+  </header>
+
+  {# ---------------------------------------------------------------- Tabs #}
+  <div class="sticky top-16 z-30 backdrop-blur-md bg-brand-50/85 border-b border-brand-200/60
+              dark:bg-[#170808]/85 dark:border-brand-900/60">
+    <div class="max-w-6xl mx-auto px-2 sm:px-6">
+      <div class="flex gap-1 -mb-px overflow-x-auto" role="tablist" aria-label="App sections">
+        <button class="tab is-active" data-tab="pantry" role="tab" aria-selected="true">My Pantry</button>
+        <button class="tab" data-tab="add" role="tab" aria-selected="false">Add Items</button>
+        <button class="tab" data-tab="plan" role="tab" aria-selected="false">Meal Plan</button>
+      </div>
     </div>
   </div>
-</nav>
 
-<!-- Degraded-mode banner (empty when DB is healthy, amber bar when down) -->
-<div id="db-health"
-     hx-get="/health"
-     hx-trigger="load, every 30s"
-     hx-swap="innerHTML">
-</div>
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
-<div class="tabs">
-  <div class="tabs-inner">
-    <button class="tab active" data-tab="pantry">My Pantry</button>
-    <button class="tab" data-tab="add">Add Items</button>
-    <button class="tab" data-tab="plan">Meal Plan</button>
-  </div>
-</div>
+    {# ---------- TAB: Pantry ---------- #}
+    <section id="tab-pantry" class="tab-content is-active animate-fade-in" role="tabpanel">
+      <article class="card">
+        <header class="card-header">
+          <div>
+            <h2 class="card-title">Pantry Items</h2>
+            <p class="card-subtitle">Sorted by expiry — finish the urgent ones first.</p>
+          </div>
+          <div class="flex flex-wrap gap-2 items-center">
+            <button type="button"
+                    class="btn btn-ghost text-xs"
+                    hx-post="/pantry/sweep-expired"
+                    hx-target="#pantry-body"
+                    hx-swap="innerHTML"
+                    hx-confirm="Remove all expired items from the pantry?">
+              Sweep expired
+            </button>
+            <button type="button"
+                    class="btn btn-ghost text-xs"
+                    hx-post="/pantry/reset"
+                    hx-target="#pantry-body"
+                    hx-swap="innerHTML"
+                    hx-confirm="Reset pantry to demo seed data? This clears all items, meal plans and waste events."
+                    hx-on::after-request="htmx.trigger('#waste-badge','load')">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              Reset
+            </button>
+          </div>
+        </header>
 
-<div class="container">
-
-  <!-- TAB: Pantry -->
-  <div class="tab-content active" id="tab-pantry">
-    <div id="hero-card"
-         hx-get="/metrics/hero"
-         hx-trigger="load, every 30s, pantrpilot:metrics-stale from:body"
-         hx-swap="innerHTML"></div>
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Pantry Items</div>
-          <div class="card-subtitle">Sorted by expiry — use the urgent ones first</div>
+        <div class="pantry-table-wrap">
+          <table class="pantry-table">
+            <colgroup>
+              <col class="col-item"><col class="col-qty"><col class="col-cat"><col class="col-exp"><col class="col-actions">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Qty</th>
+                <th scope="col" class="cell-category">Category</th>
+                <th scope="col">Expires</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="pantry-body"
+                   hx-get="/pantry-rows"
+                   hx-trigger="load, every 20s, pantrpilot:pantry-stale from:body, visibilitychange[document.visibilityState=='visible'] from:document">
+              {% for item in pantry %}
+              <tr>
+                <td class="font-medium">{{ item.name }}</td>
+                <td>{{ item.quantity }}</td>
+                <td class="cell-category">{{ item.category }}</td>
+                <td class="{{ 'expiry-urgent' if item.days_left is defined and item.days_left <= 2 else ('expiry-soon' if item.days_left is defined and item.days_left <= 5 else 'expiry-ok') }}">
+                  {{ item.expires_at[:10] if item.expires_at else '—' }}
+                </td>
+                <td></td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="5">
+                  <div class="empty-state">
+                    <div class="empty-state-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <path d="M16 10a4 4 0 0 1-8 0"/>
+                      </svg>
+                    </div>
+                    <div class="empty-state-text">
+                      No items yet — scan a receipt in the <strong>Add Items</strong> tab.
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
-        <div style="display:flex;gap:0.5rem;align-items:center">
-          <button class="btn btn-ghost" style="font-size:0.8rem;white-space:nowrap"
-                  hx-post="/pantry/sweep-expired"
-                  hx-target="#pantry-body"
-                  hx-swap="innerHTML"
-                  hx-confirm="Remove all expired items from the pantry?">
-            Sweep expired
+      </article>
+    </section>
+
+    {# ---------- TAB: Add Items ---------- #}
+    <section id="tab-add" class="tab-content" role="tabpanel">
+      <article class="card">
+        <header class="card-header">
+          <div>
+            <h2 class="card-title">Scan a Receipt</h2>
+            <p class="card-subtitle">Snap any grocery receipt — Gemini Vision extracts items in seconds.</p>
+          </div>
+          <span class="source-badge source-badge-mcp">Gemini Vision</span>
+        </header>
+
+        <label class="upload-zone" id="receipt-zone">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24" class="h-7 w-7" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+          <div class="upload-text" id="receipt-text">
+            Drop a receipt photo or click to upload &mdash; on mobile this opens the camera.
+          </div>
+          <input id="receipt-file" type="file" accept="image/*" capture="environment"
+                 onchange="triggerReceiptUpload(this)">
+        </label>
+        <div id="receipt-status" class="status-text mt-3"></div>
+      </article>
+    </section>
+
+    {# ---------- TAB: Meal Plan ---------- #}
+    <section id="tab-plan" class="tab-content" role="tabpanel">
+      <article class="card">
+        <header class="card-header">
+          <div>
+            <h2 class="card-title">AI Meal Planner</h2>
+            <p class="card-subtitle">Builds meals around near-expiry items first to reduce food waste.</p>
+          </div>
+        </header>
+
+        <div class="plan-controls">
+          <label for="days-select" class="sr-only">Plan length in days</label>
+          <select id="days-select" class="select-field">
+            <option value="3">3 days</option>
+            <option value="5" selected>5 days</option>
+            <option value="7">7 days</option>
+          </select>
+          <button type="button" class="btn btn-cta" id="plan-btn" onclick="triggerPlan()">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            Generate Plan
           </button>
-          <button class="btn btn-ghost"
-                  hx-post="/pantry/reset"
-                  hx-target="#pantry-body"
-                  hx-swap="innerHTML"
-                  hx-confirm="Reset pantry to demo seed data? This clears all items, meal plans and waste events."
-                  hx-on::after-request="htmx.trigger('#waste-badge','load')">
-            <span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span> Reset
-          </button>
         </div>
-      </div>
-      <div class="pantry-table-wrap">
-      <table class="pantry-table">
-        <colgroup>
-          <col class="col-item"><col class="col-qty"><col class="col-cat"><col class="col-exp"><col class="col-actions">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Item</th><th>Qty</th><th class="cell-category">Category</th><th>Expires</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="pantry-body"
-               hx-get="/pantry-rows"
-               hx-trigger="load, every 20s, pantrpilot:pantry-stale from:body, visibilitychange[document.visibilityState=='visible'] from:document">
-          {% for item in pantry %}
-          <tr>
-            <td style="font-weight:500">{{ item.name }}</td>
-            <td>{{ item.quantity }}</td>
-            <td class="cell-category">{{ item.category }}</td>
-            <td class="{{ 'expiry-urgent' if item.days_left is defined and item.days_left <= 2 else ('expiry-soon' if item.days_left is defined and item.days_left <= 5 else 'expiry-ok') }}">
-              {{ item.expires_at[:10] if item.expires_at else '—' }}
-            </td>
-            <td></td>
-          </tr>
-          {% else %}
-          <tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span></div><div class="empty-state-text">No items yet — scan a receipt in the Add Items tab</div></div></td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  </div>
 
-  <!-- TAB: Add Items -->
-  <div class="tab-content" id="tab-add">
+        <div id="plan-status" class="status-text mt-3"></div>
+        <div id="plan-output"></div>
+      </article>
+    </section>
 
-    <!-- Receipt OCR card -->
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Scan a Receipt</div>
-          <div class="card-subtitle">Snap any grocery receipt — Gemini Vision extracts items in seconds</div>
-        </div>
-        <span class="source-badge source-badge-mcp" style="white-space:nowrap">Gemini Vision</span>
-      </div>
+  </main>
 
-      <label class="upload-zone" id="receipt-zone">
-        <div class="upload-icon">
-          <span class="icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
-        </div>
-        <div class="upload-text" id="receipt-text">
-          Drop a receipt photo or click to upload &mdash; on mobile this opens the camera
-        </div>
-        <input id="receipt-file" type="file" accept="image/*" capture="environment"
-               onchange="triggerReceiptUpload(this)">
-      </label>
-      <div id="receipt-status" class="status-text"></div>
-    </div>
-  </div>
+  <footer class="max-w-6xl mx-auto px-4 sm:px-6 pb-10 pt-2 text-center text-xs text-brand-700/60 dark:text-rose-300/40">
+    PantryPilot · built to rescue groceries before they spoil
+  </footer>
 
-  <!-- TAB: Meal Plan -->
-  <div class="tab-content" id="tab-plan">
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">AI Meal Planner</div>
-          <div class="card-subtitle">Uses expiring items first to reduce food waste</div>
-        </div>
-      </div>
-      <div class="plan-controls">
-        <select id="days-select" class="select-field">
-          <option value="3">3 days</option>
-          <option value="5" selected>5 days</option>
-          <option value="7">7 days</option>
-        </select>
-        <button class="btn btn-primary" id="plan-btn" onclick="triggerPlan()">
-          <span class="icon icon-sm"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span> Generate Plan
-        </button>
-      </div>
-      <div id="plan-status" class="status-text" style="margin-top:0.75rem"></div>
-      <div id="plan-output"></div>
-    </div>
-  </div>
-
-</div>
-
-<script src="/static/app.js?v=16"></script>
-<div class="toast-stack" id="toast-stack"></div>
+  <script src="/static/app.js?v=17"></script>
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
 </body>
 </html>

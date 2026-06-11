@@ -28,6 +28,7 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+design-system/
 
 # Logs
 *.log
