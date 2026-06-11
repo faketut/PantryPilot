@@ -75,20 +75,20 @@ flowchart TB
     User([User browser])
 
     subgraph Frontend["Frontend (HTMX + Jinja)"]
-        UI[index.html<br/>static/app.js]
+        UI[templates/index.html<br/>static/style.css<br/>static/app.js]
     end
 
-    subgraph App["FastAPI app (app/main.py)"]
-        Routes[Routes:<br/>/pantry, /ingest,<br/>/plan, /metrics]
+    subgraph App["FastAPI app (app/)"]
+        Routes[main.py<br/>routes: /pantry, /receipt,<br/>/plan, /metrics, /health]
+        Cook[cook.py<br/>pure helpers:<br/>match_pantry_to_ingredients,<br/>grams_for, is_near_expiry]
         Ingest[ingest/receipt.py<br/>ingest/expiry.py]
         Tools[tools_local.py<br/>read_pantry · save_meal_plan<br/>record_waste_saved · get_waste_stats<br/><i>record_waste_saved fires on cook,<br/>not on plan</i>]
         Agent[agent.py<br/>Google ADK Runner<br/>gemini-2.5-flash]
         DataLayer[mcp_client.py<br/>motor driver]
     end
 
-    subgraph Sidecars["Node sidecars (scripts/start.sh)"]
+    subgraph Sidecar["Node sidecar (scripts/start.sh)"]
         MdbMCP[mongodb-mcp-server<br/>:3001]
-        BrightData[brightdata MCP<br/>optional]
     end
 
     subgraph Cloud["Google Cloud / External"]
@@ -98,6 +98,7 @@ flowchart TB
 
     User <--> UI
     UI <--> Routes
+    Routes --> Cook
     Routes --> Ingest
     Ingest --> Gemini
     Routes --> Agent

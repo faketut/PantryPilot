@@ -124,22 +124,32 @@ async def mcp_find(
 
 
 def _oid_filter(filter: dict) -> dict:
-    """Convert string _id values to ObjectId for Motor queries."""
+    """Convert string _id values to ObjectId for Motor queries.
+
+    Falls back to the raw string if it isn't a valid 24-char ObjectId hex
+    (pantry items use UUID strings as _id), so callers can mix both styles
+    without exploding.
+    """
+    def _coerce(v):
+        if not isinstance(v, str):
+            return v
+        try:
+            return ObjectId(v)
+        except Exception:
+            return v
+
     if "_id" not in filter:
         return filter
     out = dict(filter)
     val = out["_id"]
     if isinstance(val, str):
-        try:
-            out["_id"] = ObjectId(val)
-        except Exception:
-            pass
+        out["_id"] = _coerce(val)
     elif isinstance(val, dict):
         # e.g. {"$in": ["abc", "def"]}
         inner = {}
         for op, operand in val.items():
             if op == "$in" and isinstance(operand, list):
-                inner[op] = [ObjectId(v) if isinstance(v, str) else v for v in operand]
+                inner[op] = [_coerce(v) for v in operand]
             else:
                 inner[op] = operand
         out["_id"] = inner

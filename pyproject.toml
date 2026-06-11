@@ -67,9 +67,6 @@ warn_redundant_casts = true
 check_untyped_defs = true
 no_implicit_optional = true
 files = ["app"]
-# brightdata sidecar talks raw asyncio.subprocess; the union-None complaints
-# there are real but the file is already defensively guarded at runtime.
-exclude = ["app/brightdata_mcp.py"]
 
 [[tool.mypy.overrides]]
 module = "app.ingest.receipt"

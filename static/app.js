@@ -1,18 +1,20 @@
 // PantryPilot client-side JS
 
+// ---- Cross-component refresh helper ---------------------------------
+// One call site to refresh pantry table + hero card + navbar badge after
+// any action that mutates pantry/waste state. Pantry rows poll on a timer
+// too (every 20s, plus on tab visibility change) so the table can never
+// stay stale for long even if a trigger is missed.
+function _refreshStaleViews() {
+  if (!window.htmx) return;
+  htmx.trigger('body', 'pantrpilot:pantry-stale');
+  htmx.trigger('body', 'pantrpilot:metrics-stale');
+  htmx.trigger('#waste-badge', 'load');
+}
+
 // ---- Tab switching ---------------------------------------------------
 function _refreshTab(tabName) {
-  // When the user switches tabs, refresh whatever could have gone stale
-  // while another tab was open (cooking on Plan changes pantry rows and
-  // the impact badge; uploading on Add Items changes pantry rows).
-  if (tabName === 'pantry') {
-    const pantryBody = document.getElementById('pantry-body');
-    if (pantryBody && window.htmx) htmx.trigger(pantryBody, 'load');
-  }
-  if (window.htmx) {
-    htmx.trigger('#waste-badge', 'load');
-    htmx.trigger('body', 'pantrpilot:metrics-stale');
-  }
+  _refreshStaleViews();
 }
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -21,7 +23,10 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'plan' && !_planLoadedOnce) {
+    // Always re-load the plan when switching to it so cooked-day state from
+    // server is reflected (handles refresh / multi-tab edits). renderPlan
+    // rewrites #plan-output, which is fine — we lose nothing in-progress.
+    if (tab.dataset.tab === 'plan') {
       _planLoadedOnce = true;
       loadLatestPlan();
     }
@@ -210,10 +215,7 @@ async function triggerPlan() {
       status.textContent = finalPlan.summary || 'Plan generated.';
       status.className = 'status-text status-success';
       output.innerHTML = renderPlan(finalPlan);
-      htmx.trigger('#waste-badge', 'load');
-      htmx.trigger('body', 'pantrpilot:metrics-stale');
-      const pantryBody = document.getElementById('pantry-body');
-      if (pantryBody) htmx.trigger(pantryBody, 'load');
+      _refreshStaleViews();
     }
   } catch (err) {
     status.textContent = 'Network error — is the server running?';
@@ -292,31 +294,69 @@ async function markDayUsed(btn) {
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg></span> Updating…';
+  let cookData = null;
   try {
-    // Server-side cook: looks up the stored plan, decrements the right
-    // pantry rows, records waste-saved for near-expiry items, and marks
-    // the day cooked. Single round-trip, no client-side state to drift.
-    if (_currentPlanId != null && !Number.isNaN(day)) {
-      await fetch(`/plan/${encodeURIComponent(_currentPlanId)}/day/${day}/cooked`, { method: 'POST' });
-      _cookedDays.add(day);
-      const card = btn.closest('.day-card');
-      if (card) {
-        card.classList.add('is-cooked');
-        const h4 = card.querySelector('h4');
-        if (h4 && !h4.querySelector('.cooked-badge')) {
-          h4.insertAdjacentHTML('beforeend', '<span class="cooked-badge">✓ cooked</span>');
-        }
-        btn.remove();
-      }
+    if (_currentPlanId == null || Number.isNaN(day)) {
+      throw new Error('No plan loaded');
     }
-    const pantryBody = document.getElementById('pantry-body');
-    if (pantryBody) htmx.trigger(pantryBody, 'load');
-    htmx.trigger('#waste-badge', 'load');
-    htmx.trigger('body', 'pantrpilot:metrics-stale');
+    // Server-side cook: decrements the right pantry rows, records waste,
+    // marks the day cooked. Single round-trip, no client-side state drift.
+    const res = await fetch(`/plan/${encodeURIComponent(_currentPlanId)}/day/${day}/cooked`, { method: 'POST' });
+    if (!res.ok) throw new Error('cook request failed: ' + res.status);
+    cookData = await res.json().catch(() => null);
+    _cookedDays.add(day);
+    const card = btn.closest('.day-card');
+    if (card) {
+      card.classList.add('is-cooked');
+      const h4 = card.querySelector('h4');
+      if (h4 && !h4.querySelector('.cooked-badge')) {
+        h4.insertAdjacentHTML('beforeend', '<span class="cooked-badge">✓ cooked</span>');
+      }
+      btn.remove();
+    }
   } catch (e) {
     btn.disabled = false;
     btn.innerHTML = orig;
+    if (window.console) console.warn('markDayUsed failed', e);
+    return;
   }
+
+  // Refresh pantry, hero card, and the navbar badge. We do a direct fetch
+  // for the badge (not just htmx.trigger) so a stalled trigger can't hide
+  // the new totals.
+  _refreshStaleViews();
+  try {
+    const m = await fetch('/metrics');
+    if (m.ok) {
+      const badge = document.getElementById('waste-badge');
+      if (badge) badge.innerHTML = await m.text();
+    }
+  } catch (_) { /* ignore */ }
+
+  // Surface what actually happened on the server so a 0/0 response is
+  // visible instead of silently leaving the badge at 0.
+  if (cookData && typeof cookData.consumed === 'number') {
+    if (cookData.consumed === 0) {
+      _showCookToast('Cooked, but no pantry items matched this day\u2019s ingredients.');
+    } else if (cookData.rescued === 0) {
+      _showCookToast(`Decremented ${cookData.consumed} item(s). None were near expiry, so no waste rescued.`);
+    } else {
+      _showCookToast(`Day ${day} cooked: ${cookData.consumed} item(s) used, ${cookData.rescued} rescued from waste.`);
+    }
+  }
+}
+
+function _showCookToast(message) {
+  const stack = document.getElementById('toast-stack');
+  if (!stack) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<span>${message}</span>`;
+  stack.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('is-leaving');
+    setTimeout(() => toast.remove(), 220);
+  }, 4000);
 }
 
 // ---- Restore latest plan on page load --------------------------------
@@ -384,7 +424,7 @@ function _showToast(message, undoSnapshot) {
         const html = await res.text();
         const tbody = document.getElementById('pantry-body');
         if (tbody) tbody.innerHTML = html;
-        htmx.trigger('body', 'pantrpilot:metrics-stale');
+        _refreshStaleViews();
       }
     } catch (e) { /* swallow */ }
     dismiss();
@@ -414,7 +454,7 @@ document.body.addEventListener('htmx:afterRequest', (evt) => {
   if (!snap) return;
   const name = snap.name || 'item';
   _showToast(isConsume ? `Used 1 ${name}` : `Removed ${name}`, snap);
-  // Metrics may have shifted (items_rescued etc unchanged here, but plan
-  // banner cares about plan count — fire a refresh hint).
-  htmx.trigger('body', 'pantrpilot:metrics-stale');
+  // Consume/delete already swapped #pantry-body via htmx. Refresh the
+  // metrics views so the hero + badge stay in sync.
+  _refreshStaleViews();
 });
