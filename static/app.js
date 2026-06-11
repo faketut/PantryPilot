@@ -1,6 +1,20 @@
 // PantryPilot client-side JS
 
 // ---- Tab switching ---------------------------------------------------
+function _refreshTab(tabName) {
+  // When the user switches tabs, refresh whatever could have gone stale
+  // while another tab was open (cooking on Plan changes pantry rows and
+  // the impact badge; uploading on Add Items changes pantry rows).
+  if (tabName === 'pantry') {
+    const pantryBody = document.getElementById('pantry-body');
+    if (pantryBody && window.htmx) htmx.trigger(pantryBody, 'load');
+  }
+  if (window.htmx) {
+    htmx.trigger('#waste-badge', 'load');
+    htmx.trigger('body', 'pantrpilot:metrics-stale');
+  }
+}
+
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -11,6 +25,7 @@ document.querySelectorAll('.tab').forEach(tab => {
       _planLoadedOnce = true;
       loadLatestPlan();
     }
+    _refreshTab(tab.dataset.tab);
   });
 });
 
@@ -229,8 +244,10 @@ function renderPlan(plan) {
     });
 
     if (!isCooked && dayIngredients.length) {
+      const itemIds = day.pantry_item_ids || [];
       daysHtml += `<button class="btn btn-secondary" style="margin-top:0.6rem;font-size:0.78rem;padding:0.35rem 0.75rem"
         data-ingredients="${encodeURIComponent(JSON.stringify(dayIngredients))}"
+        data-item-ids="${encodeURIComponent(JSON.stringify(itemIds))}"
         data-day="${dayNum}"
         onclick="markDayUsed(this)">
         <span class="icon icon-sm"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
@@ -271,21 +288,17 @@ function copyShoppingList(items) {
 }
 
 async function markDayUsed(btn) {
-  const ingredients = JSON.parse(decodeURIComponent(btn.dataset.ingredients || '[]'));
   const day = parseInt(btn.dataset.day, 10);
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg></span> Updating…';
   try {
-    await fetch('/pantry/consume-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredients })
-    });
+    // Server-side cook: looks up the stored plan, decrements the right
+    // pantry rows, records waste-saved for near-expiry items, and marks
+    // the day cooked. Single round-trip, no client-side state to drift.
     if (_currentPlanId != null && !Number.isNaN(day)) {
       await fetch(`/plan/${encodeURIComponent(_currentPlanId)}/day/${day}/cooked`, { method: 'POST' });
       _cookedDays.add(day);
-      // Update just this card without re-fetching.
       const card = btn.closest('.day-card');
       if (card) {
         card.classList.add('is-cooked');

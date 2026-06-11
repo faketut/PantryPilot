@@ -269,10 +269,15 @@ _GRAMS_PER_UNIT_DEFAULT = 400.0
 _RESCUE_WINDOW_DAYS = 5
 
 
-def _grams_for(item: dict, take: float) -> float:
+def _grams_for(item: dict) -> float:
+    """Estimated grams rescued per cook of this pantry row.
+
+    Fixed per item (per cook event), not multiplied by quantity — a unit of
+    "chicken breast" already represents a serving; multiplying by qty would
+    overcount when one bag of spinach gets used across two meals.
+    """
     cat = (item.get("category") or "").lower()
-    per_unit = _GRAMS_PER_UNIT_BY_CATEGORY.get(cat, _GRAMS_PER_UNIT_DEFAULT)
-    return round(per_unit * max(take, 0), 1)
+    return _GRAMS_PER_UNIT_BY_CATEGORY.get(cat, _GRAMS_PER_UNIT_DEFAULT)
 
 
 def _is_near_expiry(item: dict, now: datetime) -> bool:
@@ -319,7 +324,7 @@ async def consume_batch(request: Request):
     )
     remaining: dict[str, float] = {k: float(v) for k, v in Counter(names).items()}
     to_delete: list[str] = []
-    rescued: list[tuple[dict, float]] = []
+    rescued: list[dict] = []
     now = datetime.now(timezone.utc)
     for item in matches:
         nm = (item.get("name") or "").lower()
@@ -341,15 +346,77 @@ async def consume_batch(request: Request):
                 {"$set": {"quantity": new_qty}},
             )
         if take > 0 and _is_near_expiry(item, now):
-            rescued.append((item, take))
+            rescued.append(item)
     if to_delete:
         await mcp_delete_many("pantry_items", {"_id": {"$in": to_delete}})
-    for item, take in rescued:
+    for item in rescued:
         try:
             await record_waste_saved(
                 item_id=item["_id"],
                 item_name=item.get("name", ""),
-                grams=_grams_for(item, take),
+                grams=_grams_for(item),
+            )
+        except Exception:
+            logger.exception("failed to record waste-saved event for %s", item.get("_id"))
+    return HTMLResponse(await _pantry_rows_html())
+
+
+
+@app.post("/pantry/consume-ids", response_class=HTMLResponse)
+async def consume_ids(request: Request):
+    """Decrement specific pantry rows by ``_id`` (1 unit each).
+
+    Used by the "Mark day as cooked" button: the agent attaches the exact
+    pantry _ids it consumed for that day, so we don't have to guess from
+    free-form ingredient strings. Rows that hit 0 are deleted; near-expiry
+    rows produce a waste-saved event.
+    """
+    body = await request.json()
+    raw = body.get("ids", [])
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="ids must be a list")
+    if len(raw) > _MAX_BATCH_INGREDIENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"too many ids (max {_MAX_BATCH_INGREDIENTS})",
+        )
+    ids = list(dict.fromkeys(
+        i.strip() for i in raw if isinstance(i, str) and i.strip()
+    ))
+    if not ids:
+        return HTMLResponse(await _pantry_rows_html())
+    matches = await mcp_find(
+        "pantry_items",
+        {"_id": {"$in": ids}},
+        limit=len(ids),
+    )
+    to_delete: list[str] = []
+    rescued: list[dict] = []
+    now = datetime.now(timezone.utc)
+    for item in matches:
+        try:
+            qty = float(item.get("quantity", 1))
+        except (TypeError, ValueError):
+            qty = 1
+        new_qty = qty - 1
+        if new_qty <= 0:
+            to_delete.append(item["_id"])
+        else:
+            await mcp_update_many(
+                "pantry_items",
+                {"_id": item["_id"]},
+                {"$set": {"quantity": new_qty}},
+            )
+        if _is_near_expiry(item, now):
+            rescued.append(item)
+    if to_delete:
+        await mcp_delete_many("pantry_items", {"_id": {"$in": to_delete}})
+    for item in rescued:
+        try:
+            await record_waste_saved(
+                item_id=item["_id"],
+                item_name=item.get("name", ""),
+                grams=_grams_for(item),
             )
         except Exception:
             logger.exception("failed to record waste-saved event for %s", item.get("_id"))
@@ -473,9 +540,87 @@ async def plan_latest():
 
 @app.post("/plan/{plan_id}/day/{day}/cooked")
 async def mark_plan_day_cooked(plan_id: str, day: int):
-    """Persist that a specific day of a stored plan has been cooked."""
+    """Mark a day as cooked: consume pantry rows and record waste rescued.
+
+    Single source of truth for the cook flow. We look up the persisted plan,
+    figure out which pantry rows that day consumes (preferring the agent's
+    explicit ``pantry_item_ids``, falling back to a name-based match against
+    the day's ``ingredients``), decrement them, and log waste-saved events
+    for any near-expiry rows. Avoids relying on client-side state which can
+    drift from what's actually in Mongo.
+    """
     if not 0 <= day <= 31:
         raise HTTPException(status_code=400, detail="day out of range")
+
+    plans = await mcp_find("meal_plans", {"_id": plan_id}, limit=1)
+    if not plans:
+        raise HTTPException(status_code=404, detail="plan not found")
+    plan_doc = plans[0]
+
+    # Idempotent: cooking the same day twice should not double-count waste.
+    if day in (plan_doc.get("cooked_days") or []):
+        return {"ok": True, "day": day, "already_cooked": True}
+
+    day_entry = next(
+        (d for d in (plan_doc.get("plan") or []) if d.get("day") == day),
+        None,
+    )
+
+    matches: list[dict] = []
+    if day_entry:
+        ids = [i for i in (day_entry.get("pantry_item_ids") or []) if isinstance(i, str)]
+        if ids:
+            matches = await mcp_find(
+                "pantry_items", {"_id": {"$in": ids}}, limit=len(ids)
+            )
+        if not matches:
+            # Fallback: derive names from the day's ingredients and match by name.
+            names: set[str] = set()
+            for meal in (day_entry.get("meals") or []):
+                for ing in (meal.get("ingredients") or []):
+                    if isinstance(ing, str):
+                        names.add(ing.lower().strip())
+            if names:
+                matches = await mcp_find(
+                    "pantry_items",
+                    {"name": {"$in": list(names)}},
+                    sort=[("expires_at", 1)],
+                    limit=_MAX_BATCH_INGREDIENTS,
+                )
+
+    to_delete: list[str] = []
+    rescued: list[dict] = []
+    now = datetime.now(timezone.utc)
+    consumed_ids: list[str] = []
+    for item in matches:
+        try:
+            qty = float(item.get("quantity", 1))
+        except (TypeError, ValueError):
+            qty = 1
+        new_qty = qty - 1
+        if new_qty <= 0:
+            to_delete.append(item["_id"])
+        else:
+            await mcp_update_many(
+                "pantry_items",
+                {"_id": item["_id"]},
+                {"$set": {"quantity": new_qty}},
+            )
+        consumed_ids.append(item["_id"])
+        if _is_near_expiry(item, now):
+            rescued.append(item)
+    if to_delete:
+        await mcp_delete_many("pantry_items", {"_id": {"$in": to_delete}})
+    for item in rescued:
+        try:
+            await record_waste_saved(
+                item_id=item["_id"],
+                item_name=item.get("name", ""),
+                grams=_grams_for(item),
+            )
+        except Exception:
+            logger.exception("failed to record waste-saved event for %s", item.get("_id"))
+
     res = await mcp_update_many(
         "meal_plans",
         {"_id": plan_id},
@@ -483,7 +628,17 @@ async def mark_plan_day_cooked(plan_id: str, day: int):
     )
     if not res.get("matched"):
         raise HTTPException(status_code=404, detail="plan not found")
-    return {"ok": True, "day": day}
+
+    logger.info(
+        "cooked plan=%s day=%s consumed=%d rescued=%d",
+        plan_id, day, len(consumed_ids), len(rescued),
+    )
+    return {
+        "ok": True,
+        "day": day,
+        "consumed": len(consumed_ids),
+        "rescued": len(rescued),
+    }
 
 
 # ---------------------------------------------------------------------------

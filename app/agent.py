@@ -41,7 +41,15 @@ Your job for every plan request:
    later when the user marks a day as cooked.
 7. Return a JSON object with keys:
    - "days": int
-   - "plan": list of {{"day": int, "meals": [{{"meal": str, "recipe": str, "ingredients": [str]}}]}}
+   - "plan": list of {{
+       "day": int,
+       "meals": [{{"meal": str, "recipe": str, "ingredients": [str]}}],
+       "pantry_item_ids": [str]   # the _id values from read_pantry that
+                                  # this day's meals consume. REQUIRED for
+                                  # the cook button to decrement the right
+                                  # rows. Include each id at most once per
+                                  # day.
+     }}
    - "missing_ingredients": list of str
    - "projected_waste_saved_grams": float (forecast, not yet recorded)
    - "summary": str (one-sentence human-readable summary)
