@@ -192,7 +192,6 @@ async def test_cook_updates_metrics_badge(monkeypatch):
         "cooked_days": [],
     }
     fakes = _fake_mongo(pantry, plan)
-    waste_events = fakes[6]
     _patch_app(monkeypatch, fakes)
 
     transport = ASGITransport(app=app_main.app)
