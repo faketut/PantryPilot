@@ -147,6 +147,7 @@ gcloud run deploy pantrpilot \
   --allow-unauthenticated \
   --memory 1Gi --cpu 1 --timeout 300 \
   --set-env-vars "GOOGLE_API_KEY=...,MDB_MCP_CONNECTION_STRING=..."
+```
 
 ## Demo script (≈3 min)
 
